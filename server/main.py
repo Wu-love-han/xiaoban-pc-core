@@ -123,6 +123,22 @@ async def lifespan(app: FastAPI):
         logger.exception("插件工具加载失败")
 
     try:
+        from core import autopilot as autopilot_mod  # noqa: PLC0415
+
+        autopilot_mod.ensure_running()
+        logger.info("主动行为调度已启动")
+    except Exception:  # noqa: BLE001
+        logger.exception("主动行为调度启动失败")
+
+    try:
+        from core import memory_engine  # noqa: PLC0415
+
+        memory_engine.init()
+        memory_engine.self_check()
+    except Exception:  # noqa: BLE001
+        logger.exception("记忆引擎初始化失败")
+
+    try:
         cfg = cfg_mod.load()
         srv = (cfg.get("server") or {}) if isinstance(cfg, dict) else {}
         logger.info(

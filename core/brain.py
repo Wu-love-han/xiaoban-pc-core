@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import AsyncIterator
 
 from . import config as cfg_mod
-from . import db, persona
+from . import db, memory_engine, persona
 from .paths import WORKSPACE
 from .providers import ProviderEvent, get_provider, parse_args
 from .toolbase import ToolContext, registry
@@ -87,17 +87,40 @@ async def _wait_approval(approval_id: str, timeout_s: float) -> str:
 # ---------------------------------------------------------------- 辅助
 
 def _memory_block(session_id: str, text: str) -> str:
-    """记忆注入块。失败绝不影响主流程。"""
+    """记忆注入块：长期记忆 + 印象 + 情绪 + 好感度。
+
+    这是"活人感"的来源——AI 每轮都能"想起"以前的事。
+    失败绝不影响主流程。
+    """
     try:
         cfg = cfg_mod.load()
         if not (cfg.get("memory") or {}).get("enabled", True):
             return ""
         limit = int((cfg.get("memory") or {}).get("max_inject") or 6)
-        items = db.recall(text, scope=session_id, limit=limit)
-        if not items:
-            return ""
-        lines = [f"- {it['key']}：{it['value']}" for it in items]
-        return "\n".join(lines)
+        memory_engine.init()
+        parts: list[str] = []
+
+        # 长期记忆（关键词召回）
+        recalled = memory_engine.recall_long_term(text, limit=limit)
+        if recalled:
+            lines = [f"- {it['content']}" for it in recalled]
+            parts.append("【你记得的事】\n" + "\n".join(lines))
+
+        # 对用户的印象
+        imps = memory_engine.list_impressions(limit=5)
+        if imps:
+            lines = [f"- {it['content']}" for it in imps]
+            parts.append("【你对这个用户的印象】\n" + "\n".join(lines))
+
+        # 当前情绪 + 好感度
+        mood = memory_engine.get_mood()
+        affinity = memory_engine.get_affinity()
+        parts.append(
+            f"【你现在的状态】情绪：{mood.get('mood', 'calm')}，精力：{mood.get('energy', 65)}，"
+            f"对用户的好感度：{affinity}（0-100）"
+        )
+
+        return "\n\n".join(parts)
     except Exception:  # noqa: BLE001
         logger.warning("记忆注入失败，忽略", exc_info=True)
         return ""
@@ -143,6 +166,42 @@ def _result_for_model(res: dict) -> dict:
         "ok": bool(res.get("ok")),
         "output": str(res.get("output") or ""),
     }
+
+
+def _remember_turn(session_id: str, user_text: str, reply_text: str) -> None:
+    """一轮结束后，把这一轮写进分层记忆 + 更新情绪。
+
+    原则：绝不因为记忆出错影响主流程；情绪只做"合理的微调"——
+    用户说开心的事 → 精力+3、mood 可能变 happy；说累/难过 → energy-3。
+    """
+    cfg = cfg_mod.load()
+    if not (cfg.get("memory") or {}).get("enabled", True):
+        return
+    try:
+        memory_engine.init()
+        # 1) 短期记忆：记下用户说了什么（截断，省空间）
+        short = user_text.strip()[:200]
+        if short:
+            memory_engine.add_short_term("user", short)
+
+        # 2) 情绪微调：只做基于词表的轻量推断，不做模型调用（省 token）
+        happy_words = ("开心", "高兴", "哈哈", "太好了", "喜欢", "棒", "谢谢", "厉害")
+        sad_words = ("累", "难过", "烦", "生气", "不开心", "难受", "糟")
+        low = user_text.lower()
+        if any(w in low for w in happy_words):
+            memory_engine.update_mood(energy=memory_engine.get_mood().get("energy", 65) + 3)
+        elif any(w in low for w in sad_words):
+            memory_engine.update_mood(energy=max(10, memory_engine.get_mood().get("energy", 65) - 3))
+
+        # 3) 自动提炼长期记忆：用户说了明确的"我喜欢/我是/记住"类事实才存
+        #    简单启发式，不额外调模型，避免误记
+        for prefix in ("我喜欢", "我讨厌", "我是", "我住在", "我在", "我的", "记住"):
+            if prefix in user_text:
+                content = user_text.strip()[:120]
+                memory_engine.remember_long_term(content, category="用户自述", importance=0.7)
+                break
+    except Exception:  # noqa: BLE001
+        logger.warning("记忆写入异常，忽略", exc_info=True)
 
 
 # ---------------------------------------------------------------- 主循环
@@ -422,6 +481,12 @@ async def run_turn(
         meta=meta,
     )
     db.touch_session(session_id)
+
+    # ---- 记忆引擎：这一轮结束了，把对话和情绪记下来
+    try:
+        _remember_turn(session_id, text, final_text)
+    except Exception:  # noqa: BLE001
+        logger.warning("记忆写入失败，忽略", exc_info=True)
     db.add_event(
         "turn_end",
         {

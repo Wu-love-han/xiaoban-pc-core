@@ -266,6 +266,10 @@ def recall_long_term(query_text: str = "", limit: int = 6) -> list[dict]:
             terms = {q}
             for i in range(len(q) - 1):
                 terms.add(q[i : i + 2])
+            # 单字也要进匹配（中文单字有意义，比如「喝」「累」「猫」）
+            for ch in q:
+                if ch.strip():
+                    terms.add(ch)
             terms = [t for t in terms if t.strip()][:12]
             like = " OR ".join(["content LIKE ?"] * len(terms))
             params: list[Any] = [f"%{t}%" for t in terms]
