@@ -42,7 +42,7 @@ from core.paths import LOGS_DIR, WEB_DIR, ensure_dirs
 from core.toolbase import load_all
 from core import plugins as plugin_mod
 
-from .routes import approvals, autopilot_api, chat, live_api, memory_api, plugins_api, sessions, system, tools_api
+from .routes import approvals, autopilot_api, capabilities_api, chat, live_api, memory_api, plugins_api, sessions, system, tools_api
 
 logger = logging.getLogger("pccore.server")
 
@@ -210,6 +210,7 @@ def create_app() -> FastAPI:
     app.include_router(plugins_api.router)      # /api/plugins（GitHub 插件口）
     app.include_router(memory_api.router)        # /api/memory（记忆+情绪）
     app.include_router(autopilot_api.router)     # /api/autopilot（主动行为）
+    app.include_router(capabilities_api.router)   # /api/capabilities（能力插槽）
     app.include_router(live_api.router)          # /api/live（直播+形象）
     app.include_router(approvals.router)       # /api/approvals...
 
