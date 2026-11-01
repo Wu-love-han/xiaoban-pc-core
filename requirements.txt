@@ -1,0 +1,15 @@
+# 小伴 PC-CORE 运行依赖
+# 安装：python -m pip install -r requirements.txt
+
+fastapi>=0.115
+uvicorn>=0.32
+httpx>=0.28
+pydantic>=2.9
+
+# 可选但推荐（缺了会自动降级，不会崩）
+ddgs>=9.0          # net.web_search 联网搜索
+psutil>=5.9        # sys.info 的 CPU/内存采集（缺了走 ctypes 兜底）
+
+# 测试
+pytest>=8.0
+pytest-asyncio>=0.24
