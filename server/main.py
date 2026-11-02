@@ -42,7 +42,7 @@ from core.paths import LOGS_DIR, WEB_DIR, ensure_dirs
 from core.toolbase import load_all
 from core import plugins as plugin_mod
 
-from .routes import approvals, autopilot_api, capabilities_api, chat, github_api_route, grandlog_api, live_api, memory_api, plugins_api, sessions, system, tools_api
+from .routes import approvals, autopilot_api, capabilities_api, chat, github_api_route, grandlog_api, live_api, memory_api, plugins_api, sessions, sync_api, system, tools_api
 
 logger = logging.getLogger("pccore.server")
 
@@ -146,6 +146,16 @@ async def lifespan(app: FastAPI):
         logger.exception("每日复盘注册失败")
 
     try:
+        from core import sync_hub  # noqa: PLC0415
+
+        sync_hub.init()
+        sync_hub.register("pc", "PC（小伴）", "pc", {"role": "hub"})
+        sync_hub.log("pc", "system", "PC 中枢启动")
+        logger.info("同步中枢就绪（PC 已注册为终端）")
+    except Exception:  # noqa: BLE001
+        logger.exception("同步中枢初始化失败")
+
+    try:
         cfg = cfg_mod.load()
         srv = (cfg.get("server") or {}) if isinstance(cfg, dict) else {}
         logger.info(
@@ -236,6 +246,7 @@ def create_app() -> FastAPI:
     app.include_router(capabilities_api.router)   # /api/capabilities（能力插槽）
     app.include_router(grandlog_api.router)       # /api/grandlog（总志）
     app.include_router(github_api_route.router)   # /api/github（GitHub 连接）
+    app.include_router(sync_api.router)           # /api/sync（三端同步）
     app.include_router(live_api.router)          # /api/live（直播+形象）
     app.include_router(approvals.router)       # /api/approvals...
 

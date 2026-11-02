@@ -54,17 +54,43 @@ def _presented(request: Request, x_pc_token: str | None) -> str:
     return ""
 
 
+def is_loopback(request: Request) -> bool:
+    """请求是否来自本机回环（PC 自己的浏览器 / 本地脚本）。
+
+    只认 127.0.0.1 与 ::1。带 X-Forwarded-For / CF-Connecting-IP 的一律当远程
+    （防止反向代理把外部请求伪装成本机）。
+    """
+    if request.headers.get("x-forwarded-for") or request.headers.get("cf-connecting-ip"):
+        return False
+    host = request.client.host if request.client else ""
+    return host in ("127.0.0.1", "::1", "localhost")
+
+
 async def require_auth(
     request: Request,
     x_pc_token: str | None = Header(default=None, alias=HEADER_NAME),
 ) -> None:
     """FastAPI 依赖：校验不过直接 401。
 
+    安全模型（"底线"）：
+    - 本机回环（PC 自己的浏览器）→ 免 token，方便日常使用
+    - 外部（局域网 / Tailscale / 手机 / 机器人）→ **必须带 token**
+    - 没配 token 时：回环放行，**外部一律拒绝**（fail closed，绝不裸奔）
+
     401 的响应体由 main.py 的异常处理器统一改写成 `{"ok": false, "error": ...}`。
     """
+    if is_loopback(request):
+        return
+
     want = expected_token()
     if not want:
-        return
+        logger.warning("外部请求被拒（未配置 auth_token）：%s %s 来自 %s",
+                       request.method, request.url.path,
+                       request.client.host if request.client else "?")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="服务端未配置 auth_token，外部访问已禁用（请在 config.json 里设置）",
+        )
 
     got = _presented(request, x_pc_token)
     if got and hmac.compare_digest(got, want):
@@ -78,4 +104,4 @@ async def require_auth(
     )
 
 
-__all__ = ["require_auth", "auth_enabled", "expected_token", "HEADER_NAME"]
+__all__ = ["require_auth", "auth_enabled", "expected_token", "is_loopback", "HEADER_NAME"]
