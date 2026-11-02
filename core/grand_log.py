@@ -1,0 +1,165 @@
+"""总志（Grand Log）——每轮必读的全局状态与长期记忆总纲。
+
+用户笔记原文：
+    "开始前，读总志，强化记忆"
+    "总志(状态) / 关键问题生成"
+    "一轮生成一次总结"
+
+设计：
+- 一份 Markdown 总志文件（docs/GRAND_LOG.md），人可读、AI 每轮读。
+- 每轮开始：读总志，注入 system prompt（强化记忆）。
+- 每轮结束：把这一轮的关键点追加到"最近流水"，并自动重写"当前状态"段。
+- 一天一次总复盘：把流水压缩成要点，防止无限膨胀。
+
+只加不改：不删除既有内容，只在标记区域内重写。
+"""
+
+from __future__ import annotations
+
+import logging
+import re
+import time
+from datetime import datetime
+from pathlib import Path
+
+from .paths import DOCS
+
+logger = logging.getLogger("pccore.grandlog")
+
+GRAND_LOG_FILE = DOCS / "GRAND_LOG.md"
+
+# 标记区：只在这些标记之间自动重写，标记外的用户手写内容永不删除
+_MARK_STATE_START = "<!-- STATE:START -->"
+_MARK_STATE_END = "<!-- STATE:END -->"
+_MARK_RECENT_START = "<!-- RECENT:START -->"
+_MARK_RECENT_END = "<!-- RECENT:END -->"
+
+_TEMPLATE = """# 小伴总志（Grand Log）
+
+> 每轮对话前必读。这是"强化记忆"的总纲。
+> 自动维护区在 HTML 注释标记之间，其余部分可手写，AI 不会删。
+
+## 一、当前状态
+
+<!-- STATE:START -->
+（尚未生成）
+<!-- STATE:END -->
+
+## 二、最近流水（每轮一条，自动）
+
+<!-- RECENT:START -->
+<!-- RECENT:END -->
+
+## 三、长期要点（人工或每日复盘写入）
+
+- （暂无）
+
+## 四、关键问题（每轮自动生成候选）
+
+- （暂无）
+"""
+
+
+def _now() -> str:
+    return datetime.now().strftime("%Y-%m-%d %H:%M")
+
+
+def ensure_file() -> Path:
+    """确保总志文件存在（首次创建模板，不覆盖已有）。"""
+    try:
+        DOCS.mkdir(parents=True, exist_ok=True)
+        if not GRAND_LOG_FILE.exists():
+            GRAND_LOG_FILE.write_text(_TEMPLATE, encoding="utf-8")
+            logger.info("已创建总志：%s", GRAND_LOG_FILE)
+        return GRAND_LOG_FILE
+    except Exception:  # noqa: BLE001
+        logger.exception("创建总志失败")
+        return GRAND_LOG_FILE
+
+
+def read() -> str:
+    """读总志全文（每轮注入用）。失败返回空串，绝不影响对话。"""
+    try:
+        ensure_file()
+        return GRAND_LOG_FILE.read_text(encoding="utf-8")
+    except Exception:  # noqa: BLE001
+        logger.warning("读总志失败", exc_info=True)
+        return ""
+
+
+def _replace_region(text: str, start_mark: str, end_mark: str, new_body: str) -> str:
+    """替换两个标记之间的内容；标记不存在就追加到文件末尾。"""
+    if start_mark in text and end_mark in text:
+        pattern = re.compile(re.escape(start_mark) + r".*?" + re.escape(end_mark), re.S)
+        return pattern.sub(f"{start_mark}\n{new_body}\n{end_mark}", text, count=1)
+    return text + f"\n{start_mark}\n{new_body}\n{end_mark}\n"
+
+
+def append_round(user_text: str, reply_text: str, tool_count: int = 0) -> None:
+    """一轮结束：追加一条流水（保留最近 40 条），并更新当前状态。"""
+    try:
+        ensure_file()
+        text = GRAND_LOG_FILE.read_text(encoding="utf-8")
+        ts = _now()
+        u = (user_text or "").strip().replace("\n", " ")[:80]
+        r = (reply_text or "").strip().replace("\n", " ")[:80]
+        line = f"- `{ts}` 用户：{u}｜小伴：{r}｜工具×{tool_count}"
+
+        # 取出现有流水
+        m = re.search(
+            re.escape(_MARK_RECENT_START) + r"(.*?)" + re.escape(_MARK_RECENT_END),
+            text,
+            re.S,
+        )
+        body = (m.group(1) if m else "").strip()
+        lines = [ln for ln in body.splitlines() if ln.strip()]
+        lines.append(line)
+        lines = lines[-40:]  # 只留最近 40 条
+        text = _replace_region(text, _MARK_RECENT_START, _MARK_RECENT_END, "\n".join(lines))
+
+        # 更新当前状态
+        state = (
+            f"最后活动：{ts}\n"
+            f"最近一轮：{u or '(空)'}\n"
+            f"累计流水条数：{len(lines)}"
+        )
+        text = _replace_region(text, _MARK_STATE_START, _MARK_STATE_END, state)
+        GRAND_LOG_FILE.write_text(text, encoding="utf-8")
+    except Exception:  # noqa: BLE001
+        logger.warning("写总志失败（忽略）", exc_info=True)
+
+
+def daily_compact() -> str:
+    """每日总复盘：把最近流水压成"长期要点"候选，返回摘要文本。"""
+    try:
+        text = read()
+        m = re.search(
+            re.escape(_MARK_RECENT_START) + r"(.*?)" + re.escape(_MARK_RECENT_END),
+            text,
+            re.S,
+        )
+        body = (m.group(1) if m else "").strip()
+        lines = [ln for ln in body.splitlines() if ln.strip()]
+        if not lines:
+            return "（今天没有流水）"
+        return f"今天共 {len(lines)} 轮对话，最早：{lines[0][:40]}；最近：{lines[-1][:40]}"
+    except Exception:  # noqa: BLE001
+        logger.warning("总志复盘失败", exc_info=True)
+        return "（复盘失败）"
+
+
+def state_snippet() -> str:
+    """给 system prompt 的精简版（只取当前状态 + 最近 5 条流水，省 token）。"""
+    try:
+        text = read()
+        out = []
+        m = re.search(re.escape(_MARK_STATE_START) + r"(.*?)" + re.escape(_MARK_STATE_END), text, re.S)
+        if m and m.group(1).strip():
+            out.append("【总志·当前状态】\n" + m.group(1).strip())
+        m = re.search(re.escape(_MARK_RECENT_START) + r"(.*?)" + re.escape(_MARK_RECENT_END), text, re.S)
+        if m and m.group(1).strip():
+            lines = [ln for ln in m.group(1).strip().splitlines() if ln.strip()][-5:]
+            out.append("【总志·最近流水】\n" + "\n".join(lines))
+        return "\n\n".join(out)
+    except Exception:  # noqa: BLE001
+        return ""

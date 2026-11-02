@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import AsyncIterator
 
 from . import config as cfg_mod
-from . import db, memory_engine, persona
+from . import db, grand_log, memory_engine, persona, procedural, reviewer
 from .paths import WORKSPACE
 from .providers import ProviderEvent, get_provider, parse_args
 from .toolbase import ToolContext, registry
@@ -131,9 +131,18 @@ def _build_messages(session_id: str, user_text: str) -> list[dict]:
     brain_cfg = cfg.get("brain") or {}
     turns = int(brain_cfg.get("history_turns") or 8)
 
+    # 总志：每轮读，强化记忆（用户笔记："开始前，读总志，强化记忆"）
+    grand = grand_log.state_snippet()
+    mem = _memory_block(session_id, user_text)
+    # 程序记忆：以前类似的事用过什么工具序列
+    try:
+        proc_hint = procedural.prompt_snippet(user_text)
+    except Exception:  # noqa: BLE001
+        proc_hint = ""
+    memory_block = "\n\n".join([x for x in (grand, mem, proc_hint) if x])
     system = persona.build_system_prompt(
         tool_catalog=registry.catalog_for_prompt(),
-        memory_block=_memory_block(session_id, user_text),
+        memory_block=memory_block,
     )
     msgs: list[dict] = [{"role": "system", "content": system}]
     msgs.extend(db.history_for_model(session_id, turns=turns))
@@ -381,10 +390,19 @@ async def run_turn(
                     config=cfg,
                 )
 
+                # ---- 审核智能体：高危动作二次判级（用户笔记："也可加一个智能体审核"）
+                review_blocked, review_reason = False, ""
+                try:
+                    review_blocked, review_reason = reviewer.should_block(c.name, args)
+                except Exception:  # noqa: BLE001
+                    logger.warning("审核智能体判级失败，按原逻辑走", exc_info=True)
+
                 # ---- 危险动作：先问人，不静默执行
-                if spec.danger:
+                if spec.danger or review_blocked:
                     ap = db.create_approval(session_id, c.call_id, c.name, args)
                     say = _approval_say(c.name, args)
+                    if review_blocked and not spec.danger:
+                        say = f"{say}\n（审核：{review_reason}）"
                     yield (
                         "approval",
                         {
@@ -487,6 +505,20 @@ async def run_turn(
         _remember_turn(session_id, text, final_text)
     except Exception:  # noqa: BLE001
         logger.warning("记忆写入失败，忽略", exc_info=True)
+
+    # ---- 总志：一轮生成一次总结（用户笔记）
+    try:
+        grand_log.append_round(text, final_text, tool_count)
+    except Exception:  # noqa: BLE001
+        logger.warning("总志写入失败，忽略", exc_info=True)
+
+    # ---- 程序记忆：记下"这类问题用了这串工具"（成功才记）
+    try:
+        chain = [c.get("name") for c in all_tool_calls if c.get("name")]
+        if chain and not any(c.get("error") for c in all_tool_calls):
+            procedural.record(text, chain, success=True)
+    except Exception:  # noqa: BLE001
+        logger.warning("写程序记忆失败，忽略", exc_info=True)
     db.add_event(
         "turn_end",
         {
