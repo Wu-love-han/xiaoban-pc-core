@@ -106,7 +106,13 @@ def conn() -> sqlite3.Connection:
     c = getattr(_local, "conn", None)
     if c is None:
         ensure_dirs()
-        c = sqlite3.connect(str(DB_FILE), timeout=15.0, isolation_level=None)
+        c = sqlite3.connect(str(DB_FILE), timeout=30.0, isolation_level=None, check_same_thread=False)
+        try:
+            c.execute("PRAGMA journal_mode=WAL")
+            c.execute("PRAGMA busy_timeout=30000")
+            c.execute("PRAGMA synchronous=NORMAL")
+        except Exception:
+            pass
         c.row_factory = sqlite3.Row
         c.execute("PRAGMA journal_mode=WAL")
         c.execute("PRAGMA synchronous=NORMAL")

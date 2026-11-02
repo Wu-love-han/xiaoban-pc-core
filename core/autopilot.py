@@ -114,7 +114,14 @@ def conn() -> sqlite3.Connection:
     if c is None:
         ensure_dirs()
         DATA_DIR.mkdir(parents=True, exist_ok=True)
-        c = sqlite3.connect(str(DB_FILE), timeout=15.0, isolation_level=None)
+        c = sqlite3.connect(str(DB_FILE), timeout=30.0, isolation_level=None, check_same_thread=False)
+        # 抗并发：WAL + 忙等，避免多线程同时写导致底层崩溃
+        try:
+            c.execute("PRAGMA journal_mode=WAL")
+            c.execute("PRAGMA busy_timeout=30000")
+            c.execute("PRAGMA synchronous=NORMAL")
+        except Exception:
+            pass
         c.row_factory = sqlite3.Row
         c.execute("PRAGMA journal_mode=WAL")
         c.execute("PRAGMA synchronous=NORMAL")

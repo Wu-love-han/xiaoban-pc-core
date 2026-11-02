@@ -43,7 +43,12 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_intent_chain ON procedures(intent, tool_ch
 
 def _conn() -> sqlite3.Connection:
     DATA_DIR.mkdir(parents=True, exist_ok=True)
-    c = sqlite3.connect(str(DB_FILE), timeout=10)
+    c = sqlite3.connect(str(DB_FILE), timeout=30, isolation_level=None, check_same_thread=False)
+    try:
+        c.execute("PRAGMA journal_mode=WAL")
+        c.execute("PRAGMA busy_timeout=30000")
+    except Exception:
+        pass
     c.row_factory = sqlite3.Row
     return c
 

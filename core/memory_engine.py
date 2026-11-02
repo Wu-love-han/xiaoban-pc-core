@@ -104,7 +104,13 @@ def _conn() -> sqlite3.Connection:
             ensure_dirs()
         except Exception:  # noqa: BLE001
             logger.exception("确保数据目录失败")
-        c = sqlite3.connect(str(DB_FILE), timeout=15.0, isolation_level=None)
+        c = sqlite3.connect(str(DB_FILE), timeout=30.0, isolation_level=None, check_same_thread=False)
+        try:
+            c.execute("PRAGMA journal_mode=WAL")
+            c.execute("PRAGMA busy_timeout=30000")
+            c.execute("PRAGMA synchronous=NORMAL")
+        except Exception:
+            pass
         c.row_factory = sqlite3.Row
         c.execute("PRAGMA journal_mode=WAL")
         c.execute("PRAGMA synchronous=NORMAL")
