@@ -30,6 +30,8 @@ import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 
+import mimetypes
+
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -174,6 +176,11 @@ async def lifespan(app: FastAPI):
         yield
     finally:
         logger.info("%s 正在退出…", APP_NAME)
+
+
+# PWA 需要正确的 MIME（否则 Chrome 不认 manifest）
+mimetypes.add_type("application/manifest+json", ".webmanifest")
+mimetypes.add_type("text/javascript", ".js")
 
 
 def create_app() -> FastAPI:

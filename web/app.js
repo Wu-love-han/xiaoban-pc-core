@@ -8,6 +8,19 @@
   'use strict';
 
   var TOKEN_KEY = 'pc_token';
+
+  /* 一键登录：URL 带 ?t=<token> 或 ?token=<token> 时自动保存并清掉地址栏参数
+     （手机扫码/点链接直接进，不用手打 token） */
+  (function () {
+    try {
+      var m = /[?&](?:t|token)=([A-Za-z0-9_\-]+)/.exec(location.search);
+      if (m && m[1]) {
+        localStorage.setItem(TOKEN_KEY, m[1]);
+        var url = location.pathname + location.search.replace(/([?&])(?:t|token)=[A-Za-z0-9_\-]+&?/, '$1').replace(/[?&]$/, '');
+        history.replaceState(null, '', url + location.hash);
+      }
+    } catch (e) { /* 忽略 */ }
+  })();
   var IS_MOCK = /[?&]mock=1(?:&|$)/.test(location.search);
   // 自测钩子：?mock=1&decide=approve|deny 会自动点一下确认卡片（走真实的按钮点击路径）
   var AUTO_DECIDE = (function () {
@@ -1263,6 +1276,14 @@
   function boot() {
     bind();
     autosize();
+
+    // 移动端：输入框提示改成触摸友好文案
+    try {
+      var isMobile = window.matchMedia('(max-width: 720px)').matches;
+      if (isMobile && dom.input) {
+        dom.input.placeholder = '说点什么…（点右下角发送）';
+      }
+    } catch (e) { /* 忽略 */ }
 
     if (IS_MOCK) { startMock(); return; }
 
