@@ -496,7 +496,12 @@
     dom.cfgProvider.textContent = S.provider || '—';
     dom.cfgModelCur.textContent = model;
     dom.cfgTools.textContent = typeof h.tools === 'number' ? (h.tools + ' 个') : '—';
-    dom.cfgDb.textContent = h.db == null ? '—' : String(h.db);
+    dom.cfgDb.textContent = (function (v) {
+      if (v == null) return '—';
+      if (typeof v === 'string') return v;
+      if (typeof v === 'object') return v.file || v.path || v.name || '正常';
+      return String(v);
+    })(h.db);
   }
 
   function fmtUptime(s) {
