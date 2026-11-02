@@ -136,6 +136,20 @@
     <p class="hint">只改大脑的模型与推理档位，其它配置请手改 <code>config/config.json</code>。</p>
 
     <div class="field">
+      <span class="field-label">GitHub 账户 <span id="gh-status" class="muted" style="float:right;font-size:11px">读取中…</span></span>
+      <div class="muted" id="gh-hint" style="font-size:11px;margin-top:4px"></div>
+    </div>
+
+    <div class="field">
+      <span class="field-label">搜 GitHub 插件</span>
+      <div class="plugin-install-row">
+        <input id="gh-search" placeholder="关键词，如 memory / voice / esp32" spellcheck="false" autocomplete="off">
+        <button class="btn primary" id="btn-gh-search">搜索</button>
+      </div>
+      <div class="plugin-list" id="gh-results"><div class="muted">输入关键词搜 GitHub 上的开源插件</div></div>
+    </div>
+
+    <div class="field">
       <span class="field-label">插件市场 <button class="link-btn" id="btn-market-refresh" type="button" style="float:right;font-size:11px;background:none;border:none;color:#4ec9b0;cursor:pointer">刷新</button></span>
       <div class="plugin-list" id="market-list"><div class="muted">点「刷新」加载开源插件</div></div>
     </div>

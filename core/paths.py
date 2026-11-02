@@ -58,6 +58,13 @@ DEFAULT_CONFIG: dict = {
             "timeout_s": 300,
             "num_ctx": 8192,
         },
+        # DeepSeek 官方 API：填上 api_key 后，把 brain.provider 改成 "deepseek" 即可
+        # 申请地址 https://platform.deepseek.com/api_keys
+        "deepseek": {
+            "base_url": "https://api.deepseek.com/v1",
+            "api_key": "",
+            "timeout_s": 180,
+        },
     },
     "tools": {
         "enabled": [],          # 空 = 全部启用

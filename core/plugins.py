@@ -362,8 +362,14 @@ def install(spec: str) -> dict:
 
     pid = manifest["id"]
     dest = PLUGINS_DIR / pid
+    # 彻底清掉旧目录：rmtree 可能因 .git 文件被占用而残留，
+    # 残留时 shutil.move 会把新目录塞进旧目录里（曾经踩过）。
     if dest.exists():
         shutil.rmtree(dest, ignore_errors=True)
+    if dest.exists():
+        shutil.move(str(dest), str(PLUGINS_DIR / f".old-{pid}-{int(time.time())}"))
+    if dest.exists():
+        raise RuntimeError(f"旧插件目录清理不掉：{dest}")
     shutil.move(str(tmp), str(dest))
 
     with _lock:
@@ -418,6 +424,10 @@ def list_plugins() -> list[dict]:
 
 def boot_load_all() -> int:
     _ensure_dirs()
+    try:
+        cleanup_stale()
+    except Exception:  # noqa: BLE001
+        logger.warning("清理插件残留失败", exc_info=True)
     total = 0
     for it in load_installed():
         pid = it.get("id") or ""
@@ -472,3 +482,20 @@ def market_index(url: str | None = None) -> dict:
     return data if isinstance(data, dict) else {"plugins": data}
 
 
+
+
+def cleanup_stale() -> int:
+    """清理 .fetch-* / .old-* / .dl-* 残留目录，返回清掉的数量。"""
+    _ensure_dirs()
+    n = 0
+    for d in PLUGINS_DIR.iterdir():
+        try:
+            if d.is_dir() and d.name.startswith((".fetch-", ".old-", ".dl-")):
+                shutil.rmtree(d, ignore_errors=True)
+                if not d.exists():
+                    n += 1
+        except Exception:  # noqa: BLE001
+            pass
+    if n:
+        logger.info("清理插件残留目录 %d 个", n)
+    return n

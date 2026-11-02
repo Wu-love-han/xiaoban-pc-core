@@ -1,0 +1,12 @@
+{
+  "plugins": [
+    {
+      "id": "demo-tools",
+      "name": "演示工具包",
+      "repo": "Wu-love-han/pc-core-plugin-demo",
+      "tag": "v1.0.0",
+      "description": "小伴 GitHub 插件口演示：打招呼 + 现在几点",
+      "author": "Wh987"
+    }
+  ]
+}

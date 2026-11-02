@@ -66,6 +66,11 @@
     cfgDb: $('cfg-db'),
     marketList: $('market-list'),
     btnMarketRefresh: $('btn-market-refresh'),
+    ghStatus: $('gh-status'),
+    ghHint: $('gh-hint'),
+    ghSearch: $('gh-search'),
+    ghResults: $('gh-results'),
+    btnGhSearch: $('btn-gh-search'),
     pluginSpec: $('plugin-spec'),
     pluginList: $('plugin-list'),
     btnPluginInstall: $('btn-plugin-install'),
@@ -835,7 +840,7 @@
     dom.settings.classList.add('open');
     dom.settings.setAttribute('aria-hidden', 'false');
     dom.mask.hidden = false;
-    if (!IS_MOCK) { renderPlugins(); renderMarket(); }
+    if (!IS_MOCK) { renderPlugins(); renderMarket(); renderGhStatus(); }
   }
   function closeSettings() {
     dom.settings.classList.remove('open');
@@ -919,6 +924,69 @@
         box.appendChild(row);
       });
     }).catch(function (e) { box.innerHTML = '<div class="muted">读取失败</div>'; showBanner('插件列表失败：' + e.message); });
+  }
+
+  function renderGhStatus() {
+    if (!dom.ghStatus) return;
+    api('GET', '/api/github/status').then(function (res) {
+      var st = (res && res.status) || {};
+      if (st.loggedIn) {
+        dom.ghStatus.textContent = '已登录：' + (st.login || '?');
+        dom.ghStatus.style.color = '#4ec9b0';
+        if (dom.ghHint) dom.ghHint.textContent = '搜索和安装都走这个账户（私有仓库也能装）';
+      } else {
+        dom.ghStatus.textContent = '未登录';
+        dom.ghStatus.style.color = '#e05555';
+        if (dom.ghHint) dom.ghHint.textContent = (res && res.login && res.login.hint) || '在终端运行 gh auth login';
+      }
+    }).catch(function () {
+      if (dom.ghStatus) dom.ghStatus.textContent = '读取失败';
+    });
+  }
+
+  function renderGhResults(items) {
+    var box = dom.ghResults;
+    if (!box) return;
+    if (!items || !items.length) {
+      box.innerHTML = '<div class="muted">没搜到，换个关键词试试</div>';
+      return;
+    }
+    box.innerHTML = '';
+    items.forEach(function (r) {
+      var row = el('div', 'plugin-item');
+      var name = el('span', 'pi-name', r.fullName);
+      name.style.cursor = 'pointer';
+      name.title = r.description || '';
+      row.appendChild(name);
+      var meta = '⭐' + (r.stars || 0) + (r.language ? ' · ' + r.language : '') + (r.description ? ' · ' + r.description : '');
+      row.appendChild(el('span', 'pi-meta', meta));
+      var b = el('button', 'btn ghost', '安装');
+      b.type = 'button';
+      b.style.cssText = 'font-size:11px;padding:2px 8px;flex-shrink:0';
+      b.onclick = function () {
+        b.disabled = true; b.textContent = '安装中…';
+        api('POST', '/api/github/install', { fullName: r.fullName })
+          .then(function () { toast('已安装 ' + r.fullName); renderPlugins(); checkHealth(); })
+          .catch(function (e) { showBanner('安装失败：' + e.message); })
+          .then(function () { b.disabled = false; b.textContent = '安装'; });
+      };
+      row.appendChild(b);
+      box.appendChild(row);
+    });
+  }
+
+  function searchGithub() {
+    var q = (dom.ghSearch && dom.ghSearch.value || '').trim();
+    dom.ghResults.innerHTML = '<div class="muted">搜索中…</div>';
+    api('GET', '/api/github/search?q=' + encodeURIComponent(q) + '&limit=20&pluginOnly=' + (q ? 'false' : 'true'))
+      .then(function (res) {
+        if (!res.ok) { dom.ghResults.innerHTML = '<div class="muted">搜索失败：' + (res.error || '') + '</div>'; return; }
+        renderGhResults(res.items);
+      })
+      .catch(function (e) {
+        dom.ghResults.innerHTML = '<div class="muted">搜索失败</div>';
+        showBanner('GitHub 搜索失败：' + e.message);
+      });
   }
 
   function renderMarket() {
@@ -1169,6 +1237,10 @@
     $('btn-save').addEventListener('click', saveConfig);
     if (dom.btnPluginInstall) dom.btnPluginInstall.addEventListener('click', installPlugin);
     if (dom.btnMarketRefresh) dom.btnMarketRefresh.addEventListener('click', renderMarket);
+    if (dom.btnGhSearch) dom.btnGhSearch.addEventListener('click', searchGithub);
+    if (dom.ghSearch) dom.ghSearch.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') { e.preventDefault(); searchGithub(); }
+    });
     dom.bannerRetry.addEventListener('click', function () {
       hideBanner();
       checkHealth();

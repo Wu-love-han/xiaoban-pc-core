@@ -25,6 +25,9 @@ def get_provider(name: str | None = None) -> Provider:
     providers = cfg.get("providers") or {}
     if key == "ollama":
         p = OllamaProvider(providers.get("ollama") or {})
+    elif key == "deepseek":
+        # DeepSeek 官方 API（用户以后填 key 即可切换）
+        p = OpenAICompatProvider(providers.get("deepseek") or {}, name="deepseek")
     elif key in ("gateway", "openai", "cloud"):
         p = OpenAICompatProvider(providers.get("gateway") or {}, name=key)
     else:
