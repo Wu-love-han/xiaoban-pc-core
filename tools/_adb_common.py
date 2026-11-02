@@ -80,3 +80,104 @@ def screenshot_bytes() -> tuple[bool, bytes | str]:
         return True, p.stdout
     except Exception as exc:  # noqa: BLE001
         return False, f"截图异常：{exc}"
+
+
+# ---------------------------------------------------------------- UI 结构树（快）
+import threading as _threading
+import time as _time
+import xml.etree.ElementTree as _ET
+
+_ui_cache = {"at": 0.0, "xml": "", "elements": []}
+_ui_lock = _threading.RLock()
+UI_CACHE_TTL = 1.5  # 秒；同一屏内连续查询命中缓存，0 延迟
+
+
+def _parse_bounds(b: str):
+    """'[x1,y1][x2,y2]' -> (x1,y1,x2,y2)"""
+    try:
+        nums = re.findall(r"-?\d+", b or "")
+        if len(nums) >= 4:
+            return tuple(int(n) for n in nums[:4])
+    except Exception:
+        pass
+    return None
+
+
+def ui_tree(force: bool = False) -> tuple[bool, list[dict] | str]:
+    """拿当前界面的结构树（文字 + 坐标 + 可点击），带 1.5 秒缓存。
+
+    比截图快得多：截图要传 100KB+ 图片再让模型看图，
+    结构树只是一串文字，模型直接读。
+    """
+    with _ui_lock:
+        if not force and _time.time() - _ui_cache["at"] < UI_CACHE_TTL and _ui_cache["elements"]:
+            return True, _ui_cache["elements"]
+
+    ok, msg = device_ready()
+    if not ok:
+        return False, msg
+
+    try:
+        p = subprocess.run([adb_path(), "exec-out", "uiautomator dump /dev/tty"],
+                           capture_output=True, timeout=20)
+        raw = (p.stdout or b"").decode("utf-8", "replace")
+    except Exception as exc:  # noqa: BLE001
+        return False, f"dump 异常：{exc}"
+
+    if "<hierarchy" not in raw:
+        return False, "拿不到界面结构（App 可能屏蔽了无障碍，或屏幕未亮）"
+
+    start = raw.find("<hierarchy")
+    end = raw.rfind("</hierarchy>")
+    if end > 0:
+        raw = raw[start:end + len("</hierarchy>")]
+
+    elements: list[dict] = []
+    try:
+        root = _ET.fromstring(raw)
+    except Exception as exc:  # noqa: BLE001
+        return False, f"解析失败：{exc}"
+
+    for node in root.iter("node"):
+        text = (node.get("text") or "").strip()
+        desc = (node.get("content-desc") or "").strip()
+        rid = (node.get("resource-id") or "").strip()
+        cls = (node.get("class") or "").strip()
+        if not (text or desc or rid):
+            continue
+        bounds = _parse_bounds(node.get("bounds") or "")
+        if not bounds:
+            continue
+        x1, y1, x2, y2 = bounds
+        if x2 <= x1 or y2 <= y1:
+            continue
+        elements.append({
+            "text": text[:60],
+            "desc": desc[:60],
+            "id": rid.split("/")[-1][:40] if rid else "",
+            "class": cls.split(".")[-1][:24],
+            "center": [(x1 + x2) // 2, (y1 + y2) // 2],
+            "clickable": node.get("clickable") == "true",
+        })
+
+    with _ui_lock:
+        _ui_cache.update({"at": _time.time(), "xml": raw, "elements": elements})
+    return True, elements
+
+
+def find_element(keyword: str) -> dict | None:
+    """按文字/描述/id 找第一个匹配的元素（不区分大小写）。"""
+    kw = (keyword or "").strip().lower()
+    if not kw:
+        return None
+    ok, data = ui_tree()
+    if not ok or not isinstance(data, list):
+        return None
+    # 优先精确匹配，其次包含匹配
+    for e in data:
+        if kw in (e["text"].lower(), e["desc"].lower(), e["id"].lower()):
+            return e
+    for e in data:
+        if kw in e["text"].lower() or kw in e["desc"].lower() or kw in e["id"].lower():
+            return e
+    return None
