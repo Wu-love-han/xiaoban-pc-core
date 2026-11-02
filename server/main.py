@@ -139,6 +139,13 @@ async def lifespan(app: FastAPI):
         logger.exception("记忆引擎初始化失败")
 
     try:
+        from core import daily_review  # noqa: PLC0415
+
+        daily_review.ensure_scheduled()
+    except Exception:  # noqa: BLE001
+        logger.exception("每日复盘注册失败")
+
+    try:
         cfg = cfg_mod.load()
         srv = (cfg.get("server") or {}) if isinstance(cfg, dict) else {}
         logger.info(
