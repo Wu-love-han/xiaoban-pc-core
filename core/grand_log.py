@@ -34,6 +34,20 @@ _MARK_STATE_END = "<!-- STATE:END -->"
 _MARK_RECENT_START = "<!-- RECENT:START -->"
 _MARK_RECENT_END = "<!-- RECENT:END -->"
 
+# 清洗：模型偶尔会把工具调用写成 XML 文本，一旦落进总志，
+# 下一轮注入 system prompt 后模型会照着学，形成恶性循环（实测踩过）。
+_TOOLCALL_RE = re.compile(r"<tool_call>.*?</tool_call>", re.S)
+_TOOLJSON_RE = re.compile(r'\{\s*"name"\s*:\s*"[^"]+",\s*"arguments"\s*:.*?\}', re.S)
+
+
+def sanitize(text: str) -> str:
+    """去掉 XML 工具调用文本和裸 JSON 工具调用片段。"""
+    t = _TOOLCALL_RE.sub("", text or "")
+    t = _TOOLJSON_RE.sub("", t)
+    t = t.replace("<tool_call>", "").replace("</tool_call>", "")
+    return re.sub(r"\s+", " ", t).strip()
+
+
 _TEMPLATE = """# 小伴总志（Grand Log）
 
 > 每轮对话前必读。这是"强化记忆"的总纲。
@@ -101,8 +115,8 @@ def append_round(user_text: str, reply_text: str, tool_count: int = 0) -> None:
         ensure_file()
         text = GRAND_LOG_FILE.read_text(encoding="utf-8")
         ts = _now()
-        u = (user_text or "").strip().replace("\n", " ")[:80]
-        r = (reply_text or "").strip().replace("\n", " ")[:80]
+        u = sanitize(user_text)[:80]
+        r = sanitize(reply_text)[:80]
         line = f"- `{ts}` 用户：{u}｜小伴：{r}｜工具×{tool_count}"
 
         # 取出现有流水
@@ -159,6 +173,8 @@ def state_snippet() -> str:
         m = re.search(re.escape(_MARK_RECENT_START) + r"(.*?)" + re.escape(_MARK_RECENT_END), text, re.S)
         if m and m.group(1).strip():
             lines = [ln for ln in m.group(1).strip().splitlines() if ln.strip()][-5:]
+            lines = [sanitize(ln) for ln in lines]
+            lines = [ln for ln in lines if ln]
             out.append("【总志·最近流水】\n" + "\n".join(lines))
         return "\n\n".join(out)
     except Exception:  # noqa: BLE001

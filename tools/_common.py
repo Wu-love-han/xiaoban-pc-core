@@ -12,8 +12,8 @@ import os
 from pathlib import Path
 from typing import Any, Callable
 
-# 契约 6.1：output 进模型上下文，必须 ≤400 字
-MAX_OUT = 400
+# output 进模型上下文：太小会让 AI 看不到结果、反复重试（实测 400 字导致多轮失败）
+MAX_OUT = 3000
 _CLIP_SUFFIX = "…（已截断）"
 
 
@@ -24,8 +24,9 @@ def clip(text: Any, limit: int = MAX_OUT) -> str:
     s = s.replace("\r\n", "\n").replace("\r", "\n")
     if len(s) <= limit:
         return s
-    keep = max(0, limit - len(_CLIP_SUFFIX))
-    return s[:keep] + _CLIP_SUFFIX
+    # 头尾各保留一半：命令输出往往关键信息在末尾（如退出码、最后几行）
+    half = max(0, (limit - len(_CLIP_SUFFIX)) // 2)
+    return s[:half] + _CLIP_SUFFIX + s[-half:]
 
 
 def ok(output: Any, **data: Any) -> dict:

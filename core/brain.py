@@ -35,7 +35,7 @@ _pending_approvals: dict[str, asyncio.Future] = {}
 
 # 兜底话术（只在模型真的什么都没说的时候用）
 FALLBACK_EMPTY = "嗯…我这会儿有点卡，你再说一遍？"
-FALLBACK_MAX_ROUNDS = "这个我绕进去了，先停一下，咱们换个说法试试。"
+FALLBACK_MAX_ROUNDS = "我查了好几轮还没查完（工具调用轮数用满了）。你可以让我「只查一个东西」，或者直接告诉我具体要查什么，我再试一次。"
 
 
 # ---------------------------------------------------------------- 取消
@@ -145,8 +145,26 @@ def _build_messages(session_id: str, user_text: str) -> list[dict]:
         memory_block=memory_block,
     )
     msgs: list[dict] = [{"role": "system", "content": system}]
-    msgs.extend(db.history_for_model(session_id, turns=turns))
-    msgs.append({"role": "user", "content": user_text})
+    # 历史里如果有模型曾经吐出的 XML 工具调用文本，必须过滤掉，
+    # 否则模型会继续照着学（恶性循环）
+    hist = db.history_for_model(session_id, turns=turns)
+    for h in hist:
+        if h.get("role") == "assistant" and isinstance(h.get("content"), str):
+            cleaned = grand_log.sanitize(h["content"])
+            if not cleaned:
+                continue
+            h = {**h, "content": cleaned}
+        msgs.append(h)
+
+    # 用户消息已经在 run_turn 开头落库了，history 末尾就是它。
+    # 这里再 append 会导致同一句用户话发两遍（实测会让模型混乱、乱吐 XML）。
+    already = (
+        hist
+        and hist[-1].get("role") == "user"
+        and (hist[-1].get("content") or "").strip() == (user_text or "").strip()
+    )
+    if not already:
+        msgs.append({"role": "user", "content": user_text})
     return msgs
 
 
@@ -226,7 +244,7 @@ async def run_turn(
     bcfg = cfg.get("brain") or {}
     model = (model or bcfg.get("model") or "deepseek/deepseek-flash").strip()
     reasoning = (reasoning if reasoning is not None else bcfg.get("reasoning") or "none").strip()
-    max_rounds = int(bcfg.get("max_rounds") or 6)
+    max_rounds = int(bcfg.get("max_rounds") or 12)
     approval_timeout = float(bcfg.get("approval_timeout_s") or 300)
     temperature = float(bcfg.get("temperature") or 0.8)
     top_p = float(bcfg.get("top_p") or 0.92)

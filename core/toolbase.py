@@ -21,7 +21,7 @@ from typing import Any, Callable
 logger = logging.getLogger("pccore.tools")
 
 # 工具 output 进模型上下文，必须短
-MAX_OUTPUT_CHARS = 400
+MAX_OUTPUT_CHARS = 3000  # 太小会让 AI 看不到结果，反复重试
 
 # ------------------------------------------------------------------
 # 工具名在「规范名」和「线上名」之间转换
@@ -242,7 +242,8 @@ class ToolRegistry:
         ms = int((time.perf_counter() - t0) * 1000)
         out = str(res.get("output") or "")
         if len(out) > MAX_OUTPUT_CHARS:
-            out = out[:MAX_OUTPUT_CHARS] + "…（已截断）"
+            half = MAX_OUTPUT_CHARS // 2
+            out = out[:half] + "\n…（中间省略）…\n" + out[-half:]
         res["output"] = out
         res.setdefault("ok", False)
         res["ms"] = ms
@@ -270,7 +271,8 @@ class ToolRegistry:
                         res = {"ok": True, "output": str(res)}
                     out = str(res.get("output") or "")
                     if len(out) > MAX_OUTPUT_CHARS:
-                        out = out[:MAX_OUTPUT_CHARS] + "…（已截断）"
+                        half = MAX_OUTPUT_CHARS // 2
+                        out = out[:half] + "\n…（中间省略）…\n" + out[-half:]
                     res["output"] = out
                     res.setdefault("ok", False)
                     res["ms"] = int((time.perf_counter() - t0) * 1000)

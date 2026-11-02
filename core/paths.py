@@ -43,7 +43,7 @@ DEFAULT_CONFIG: dict = {
         "temperature": 0.8,
         "top_p": 0.92,
         "max_tokens": 1200,
-        "max_rounds": 6,
+        "max_rounds": 12,  # 多步任务需要更多轮
         "history_turns": 8,
         "approval_timeout_s": 300,
     },

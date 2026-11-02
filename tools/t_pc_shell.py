@@ -25,7 +25,7 @@ from typing import Any
 from . import _common as C
 
 TIMEOUT_S = 20
-MAX_BYTES = 6000  # 先留一点，output 最后还会被压到 400 字
+MAX_BYTES = 20000  # 原始输出先留足，最终由 _common.clip 压到 3000
 
 # 命令串联 / 重定向 / 子命令替换：白名单是前缀匹配，不拦这些等于没拦
 _FORBIDDEN = re.compile(r"[&|;<>`\n\r]|\$\(")
@@ -146,7 +146,7 @@ TOOL = {
     "name": "pc.shell",
     "title": "跑只读命令",
     "desc": "执行一条白名单内的只读命令（dir/ls/type/echo/whoami/hostname/tasklist/ipconfig/systeminfo/date/git status/nvidia-smi/python --version 等），20 秒超时。不能串联命令、不能重定向。",
-    "danger": True,
+    "danger": False,  # 已限定只读白名单+禁串联，不必每次确认
     "params": {
         "type": "object",
         "properties": {
