@@ -64,6 +64,7 @@
       <div class="composer">
         <textarea id="input" rows="1" placeholder="说点什么…（Enter 发送，Shift+Enter 换行）" autocomplete="off"></textarea>
         <div class="composer-actions">
+          <button class="btn ghost" id="btn-mic" type="button" title="按住说话">🎤</button>
           <button class="btn ghost" id="btn-stop" hidden>停止</button>
           <button class="btn primary" id="btn-send">发送</button>
         </div>
@@ -99,10 +100,17 @@
         <strong style="color:#e6e9ef;font-size:16px">小伴 · 后台看板</strong>
         <button class="btn ghost" id="dash-close" type="button">关闭</button>
       </div>
-      <div id="dash-admin-bar" style="margin-bottom:14px;padding:10px;background:#161a21;border-radius:8px;display:none">
-        <div style="color:#e0a355;font-size:12px;margin-bottom:6px">后台需要管理令牌（只在这台电脑上填一次）</div>
+      <div id="dash-admin-bar" style="margin-bottom:14px;padding:12px;background:#161a21;border:1px solid #3a3222;border-radius:8px;display:none">
+        <div style="color:#e0a355;font-size:13px;font-weight:600;margin-bottom:6px">🔒 后台看板只能在这台电脑上看</div>
+        <div style="color:#9aa3b2;font-size:12px;line-height:1.6;margin-bottom:8px">
+          这是故意的：手机端 AI 拿不到管理令牌，就不能自己下命令再说是你说的。<br>
+          在电脑浏览器打开 <b style="color:#4ec9b0">http://127.0.0.1:8770</b> 就能直接看，不用填任何东西。
+        </div>
+        <div style="color:#6b7280;font-size:11px;margin-bottom:6px">
+          确实想在手机上看得填管理令牌（在 config.json 的 server.admin_token）
+        </div>
         <div style="display:flex;gap:8px">
-          <input id="dash-admin-input" placeholder="admin_token" style="flex:1;background:#0f1115;border:1px solid #2a2e38;color:#e6e9ef;border-radius:6px;padding:8px" autocomplete="off">
+          <input id="dash-admin-input" placeholder="管理令牌（可留空，留空就看不了）" style="flex:1;background:#0f1115;border:1px solid #2a2e38;color:#e6e9ef;border-radius:6px;padding:8px" autocomplete="off">
           <button class="btn primary" id="dash-admin-save" type="button">保存</button>
         </div>
       </div>
@@ -162,6 +170,15 @@
     <p class="hint">只改大脑的模型与推理档位，其它配置请手改 <code>config/config.json</code>。</p>
 
     <div class="field">
+      <div class="field">
+        <span class="field-label">语音</span>
+        <label style="display:flex;align-items:center;gap:8px;color:#c8cdd8;font-size:13px;margin-top:6px">
+          <input type="checkbox" id="cfg-voice-out">
+          <span>回复时念出来（语音播报）</span>
+        </label>
+        <div class="muted" id="voice-status" style="font-size:11px;margin-top:4px"></div>
+      </div>
+
       <span class="field-label">GitHub 账户 <span id="gh-status" class="muted" style="float:right;font-size:11px">读取中…</span></span>
       <div class="muted" id="gh-hint" style="font-size:11px;margin-top:4px"></div>
     </div>

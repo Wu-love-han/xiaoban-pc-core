@@ -501,9 +501,22 @@ def tick_once() -> dict:
         from . import proactive  # noqa: PLC0415
 
         for m in drain_queue():
+            raw = m.get("text") or ""
+            if not raw:
+                continue
+            kind = "greeting" if m.get("kind") == "greeting" else "reminder"
+            # 让模型用自己的语气说，而不是念后台写死的文案
+            try:
+                from . import proactive_gen  # noqa: PLC0415
+
+                said = proactive_gen.generate(raw, kind=kind)
+            except Exception:  # noqa: BLE001
+                said = raw
+            if not said:
+                continue   # 模型觉得这会儿不该打扰
             proactive.push(
-                m.get("text") or "",
-                kind="reminder",
+                said,
+                kind=kind,
                 source="autopilot",
                 priority=2 if m.get("kind") in ("time", "greeting") else 1,
             )

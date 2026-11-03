@@ -53,6 +53,8 @@ def _pc_state() -> str:
                 "用 pc.screen 截图、**pc.look 直接看懂画面内容**、pc.click 点坐标、"
                 "pc.type 往窗口打字、pc.hotkey 按快捷键、pc.windows 看开了哪些窗口、"
                 "pc.context 看用户在干什么。"
+                "**能听能说**：pc.listen 用麦克风听用户说话（中文识别），"
+                "pc.speak 用喇叭念出来（中文语音合成）——语音对话已经通了。"
                 "另外 **pc.self_update 能读改你自己的代码和配置**（带备份+语法校验+自动回滚）。")
     except Exception:  # noqa: BLE001
         return ""

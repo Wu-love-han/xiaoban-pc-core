@@ -685,6 +685,9 @@
       }
 
       case 'turn_end':
+        if (S.curBubble && S.curBubble._buf && window.__voiceSpeak) {
+          window.__voiceSpeak(S.curBubble._buf);
+        }
         flushBubble();
         S.curBubble = null;
         S.curThink = null;
@@ -1354,9 +1357,12 @@
       }).catch(function (e) {
         var bar = $('dash-admin-bar');
         var msg = e.message || '';
-        if (/admin|403|令牌/i.test(msg) && bar) {
-          bar.style.display = 'block';
-          dashBody.textContent = '后台需要管理令牌。填一次就会记住。';
+        var isLocal = /^(127\.0\.0\.1|localhost)$/.test(location.hostname);
+        if (/admin|403|令牌|只能在/i.test(msg) && bar) {
+          bar.style.display = isLocal ? 'none' : 'block';
+          dashBody.textContent = isLocal
+            ? '后台读不到（本机应该能直接看，检查一下后端是否在跑）'
+            : '这个页面只能在电脑上看。电脑浏览器打开 http://127.0.0.1:8770 就行。';
         } else {
           dashBody.textContent = '读取失败：' + msg;
         }
@@ -1376,6 +1382,59 @@
     if ($('dash-close')) $('dash-close').addEventListener('click', function () { $('dash').hidden = true; });
     if (dash) dash.addEventListener('click', function (e) { if (e.target === dash) dash.hidden = true; });
     if (dom.btnGhSearch) dom.btnGhSearch.addEventListener('click', searchGithub);
+
+    // ---- 语音模式 ----
+    var VOICE_KEY = 'pc_voice_out';
+    var voiceOut = false;
+    try { voiceOut = localStorage.getItem(VOICE_KEY) === '1'; } catch (e) { /* 忽略 */ }
+    var voiceBox = $('cfg-voice-out');
+    if (voiceBox) {
+      voiceBox.checked = voiceOut;
+      voiceBox.addEventListener('change', function () {
+        voiceOut = voiceBox.checked;
+        try { localStorage.setItem(VOICE_KEY, voiceOut ? '1' : '0'); } catch (e) { /* 忽略 */ }
+      });
+    }
+    // 检查语音能力
+    if ($('voice-status')) {
+      api('GET', '/api/voice/config').then(function (res) {
+        var d = (res && res.data) || {};
+        $('voice-status').textContent = d.zh_ok
+          ? '中文语音合成和识别都可用'
+          : '缺中文语音或识别器';
+      }).catch(function () { /* 忽略 */ });
+    }
+
+    // 麦克风：录一句放进输入框
+    var mic = $('btn-mic');
+    if (mic) {
+      mic.addEventListener('click', function () {
+        if (mic.disabled) return;
+        mic.disabled = true;
+        mic.textContent = '🎙';
+        api('POST', '/api/voice/listen', { seconds: 5 }).then(function (res) {
+          var heard = ((res && res.data) || {}).heard || '';
+          if (heard && dom.input) {
+            dom.input.value = heard;
+            autosize();
+            dom.input.focus();
+          } else {
+            showBanner('没听清，再说一次？');
+          }
+        }).catch(function (e) {
+          showBanner('语音识别失败：' + e.message);
+        }).then(function () {
+          mic.disabled = false;
+          mic.textContent = '🎤';
+        });
+      });
+    }
+
+    // 语音播报：一轮结束念出来
+    window.__voiceSpeak = function (text) {
+      if (!voiceOut || !text) return;
+      api('POST', '/api/voice/speak', { text: String(text).slice(0, 300) }).catch(function () {});
+    };
     if (dom.ghSearch) dom.ghSearch.addEventListener('keydown', function (e) {
       if (e.key === 'Enter') { e.preventDefault(); searchGithub(); }
     });
