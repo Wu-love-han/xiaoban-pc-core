@@ -86,12 +86,20 @@ async def brain_config():
 
         cfg = cfg_mod.load()
         brain = cfg.get("brain") or {}
-        pname = brain.get("provider") or "gateway"
         providers = cfg.get("providers") or {}
-        conf = providers.get(pname) or providers.get("gateway") or {}
+        pname = brain.get("provider") or "gateway"
 
-        base_url = str(conf.get("base_url") or "").rstrip("/")
-        api_key = str(conf.get("api_key") or "")
+        # 手机优先用「公网可达」的配置（官网 API），因为 PC 主脑可能走本机网关
+        ds = providers.get("deepseek") or {}
+        if ds.get("api_key"):
+            base_url = str(ds.get("base_url") or "").rstrip("/")
+            api_key = str(ds.get("api_key") or "")
+            model = str((cfg.get("app") or {}).get("offline_model") or "deepseek-chat")
+        else:
+            conf = providers.get(pname) or providers.get("gateway") or {}
+            base_url = str(conf.get("base_url") or "").rstrip("/")
+            api_key = str(conf.get("api_key") or "")
+            model = str(brain.get("model") or "")
 
         # 手机只能直连公网地址；127.0.0.1 是 PC 本机，手机用不了
         usable = bool(base_url) and "127.0.0.1" not in base_url and "localhost" not in base_url
@@ -101,7 +109,7 @@ async def brain_config():
             "usable": usable,
             "baseUrl": base_url,
             "apiKey": api_key,
-            "model": str(brain.get("model") or ""),
+            "model": model,
             "reason": "" if usable else (
                 "当前模型走的是 PC 本机网关（127.0.0.1），手机直连不了。"
                 "要手机离线也能用，请在 config.json 的 providers.deepseek 里填官网 API key，"
