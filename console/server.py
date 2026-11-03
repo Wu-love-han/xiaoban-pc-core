@@ -101,11 +101,44 @@ class LoginIn(BaseModel):
     pin: str
 
 
+# 登录失败限流：同一个 IP 连续错 5 次，锁 10 分钟
+_fails: dict[str, list[float]] = {}
+FAIL_WINDOW = 600
+FAIL_LIMIT = 5
+
+
+def _client_ip(request: Request) -> str:
+    # 走 Cloudflare 隧道时真实 IP 在 CF-Connecting-IP
+    cf = request.headers.get("cf-connecting-ip")
+    if cf:
+        return cf.strip()
+    fwd = request.headers.get("x-forwarded-for")
+    if fwd:
+        return fwd.split(",")[0].strip()
+    return request.client.host if request.client else "?"
+
+
+def _too_many(ip: str) -> bool:
+    now = time.time()
+    arr = [t for t in _fails.get(ip, []) if now - t < FAIL_WINDOW]
+    _fails[ip] = arr
+    return len(arr) >= FAIL_LIMIT
+
+
 @app.post("/api/login")
-async def login(body: LoginIn, response: Response):
+async def login(body: LoginIn, response: Response, request: Request):
+    ip = _client_ip(request)
+    if _too_many(ip):
+        logger.warning("PIN 尝试过多，锁定：%s", ip)
+        return {"ok": False, "error": "试错太多次了，等 10 分钟再来"}
+
     if body.pin.strip() != _pin():
-        await asyncio_sleep(0.4)
-        return {"ok": False, "error": "PIN 不对"}
+        _fails.setdefault(ip, []).append(time.time())
+        await asyncio_sleep(0.6)
+        left = max(0, FAIL_LIMIT - len(_fails.get(ip, [])))
+        return {"ok": False, "error": f"PIN 不对（还能试 {left} 次）"}
+
+    _fails.pop(ip, None)
     tok = secrets.token_urlsafe(24)
     _sessions[tok] = time.time() + SESSION_TTL
     response.set_cookie(COOKIE, tok, httponly=True, max_age=SESSION_TTL, samesite="lax")
