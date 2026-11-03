@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0f1115">
+<title>小伴控制台</title>
+<style>
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body { margin:0; background:#0f1115; color:#c8cdd8; font:14px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
+  .wrap { max-width: 780px; margin: 0 auto; padding: 16px 14px 90px; }
+  h1 { font-size:17px; color:#e6e9ef; margin:0 0 4px; font-weight:600; }
+  .sub { color:#6b7280; font-size:12px; margin-bottom:16px; }
+  .card { background:#161a21; border:1px solid #232936; border-radius:12px; padding:14px; margin-bottom:12px; }
+  .card-h { display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; }
+  .card-t { font-weight:600; color:#e6e9ef; font-size:14px; }
+  .dot { display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:6px; }
+  .on { background:#4ec9b0; } .off { background:#4a5160; } .warn { background:#e0a355; }
+  .kv { display:flex; gap:8px; padding:5px 0; font-size:13px; }
+  .kv .k { color:#6b7280; min-width:64px; flex-shrink:0; }
+  .kv .v { color:#c8cdd8; word-break:break-word; }
+  .tabs { display:flex; gap:6px; margin-bottom:14px; overflow-x:auto; padding-bottom:4px; }
+  .tab { padding:8px 14px; border-radius:8px; background:#161a21; border:1px solid #232936; color:#8a93a5; font-size:13px; white-space:nowrap; cursor:pointer; }
+  .tab.on { background:#4ec9b0; color:#0f1115; border-color:#4ec9b0; font-weight:600; }
+  .btn { padding:9px 14px; border-radius:8px; border:1px solid #2a2e38; background:#1b2029; color:#c8cdd8; font-size:13px; cursor:pointer; }
+  .btn.p { background:#4ec9b0; color:#0f1115; border-color:#4ec9b0; font-weight:600; }
+  .btn.d { background:transparent; color:#e05555; border-color:#5a2a2a; }
+  .btn:disabled { opacity:.5; }
+  input, textarea { width:100%; background:#0f1115; border:1px solid #2a2e38; color:#e6e9ef; border-radius:8px; padding:10px; font:inherit; }
+  textarea { resize:vertical; min-height:120px; line-height:1.55; }
+  .row { display:flex; gap:8px; align-items:center; }
+  .item { border:1px solid #232936; border-radius:8px; padding:10px; margin-bottom:8px; font-size:13px; }
+  .item .t { color:#e6e9ef; font-weight:600; }
+  .item .m { color:#6b7280; font-size:12px; margin-top:2px; }
+  .msg { padding:9px 12px; border-radius:10px; margin-bottom:8px; max-width:88%; word-break:break-word; white-space:pre-wrap; }
+  .msg.me { background:#1e2a28; margin-left:auto; color:#c8e8e0; }
+  .msg.ai { background:#1a1f28; color:#c8cdd8; }
+  .msg.sys { background:transparent; color:#6b7280; font-size:12px; max-width:100%; }
+  .login { max-width:340px; margin:18vh auto; text-align:center; }
+  .login h1 { font-size:22px; margin-bottom:8px; }
+  .pin { font-size:24px; letter-spacing:10px; text-align:center; }
+  .hidden { display:none !important; }
+  .foot { position:fixed; bottom:0; left:0; right:0; background:#0f1115; border-top:1px solid #232936; padding:10px 14px calc(10px + env(safe-area-inset-bottom)); }
+  .foot-inner { max-width:780px; margin:0 auto; display:flex; gap:8px; }
+  .tag { display:inline-block; font-size:11px; padding:1px 7px; border-radius:5px; background:#232936; color:#8a93a5; margin-left:6px; }
+  .tag.hi { background:#3a2a1a; color:#e0a355; }
+</style>
+</head>
+<body>
+
+<div id="loginView" class="login">
+  <h1>小伴控制台</h1>
+  <div class="sub" style="margin-bottom:18px">输入 PIN 才能进</div>
+  <input id="pin" class="pin" type="tel" inputmode="numeric" maxlength="8" placeholder="······" autocomplete="off">
+  <div style="height:12px"></div>
+  <button class="btn p" id="btnLogin" style="width:100%">进入</button>
+  <div class="sub" id="loginMsg" style="margin-top:12px;color:#e05555"></div>
+</div>
+
+<div id="appView" class="hidden">
+  <div class="wrap">
+    <div class="card-h">
+      <div><h1>小伴控制台</h1><div class="sub" id="clock">—</div></div>
+      <button class="btn" id="btnLogout">退出</button>
+    </div>
+
+    <div class="tabs">
+      <div class="tab on" data-t="overview">概览</div>
+      <div class="tab" data-t="tasks">任务</div>
+      <div class="tab" data-t="memory">记忆</div>
+      <div class="tab" data-t="persona">人格</div>
+      <div class="tab" data-t="chat">对话</div>
+    </div>
+
+    <div id="tab-overview"></div>
+    <div id="tab-tasks" class="hidden"></div>
+    <div id="tab-memory" class="hidden"></div>
+    <div id="tab-persona" class="hidden"></div>
+    <div id="tab-chat" class="hidden"></div>
+  </div>
+
+  <div class="foot hidden" id="chatFoot">
+    <div class="foot-inner">
+      <input id="chatInput" placeholder="跟小伴说点什么…" autocomplete="off">
+      <button class="btn p" id="btnChatSend">发送</button>
+    </div>
+  </div>
+</div>
+
+<script>
+var $ = function (id) { return document.getElementById(id); };
+var CUR = 'overview';
+var POLL = null;
+
+function esc(v) {
+  return String(v == null ? '' : v).replace(/&/g,'&amp;').replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function api(method, path, body) {
+  var opt = { method: method, headers: {} };
+  if (body !== undefined) {
+    opt.headers['Content-Type'] = 'application/json';
+    opt.body = JSON.stringify(body);
+  }
+  return fetch(path, opt).then(function (r) {
+    return r.text().then(function (t) {
+      var d = null; try { d = t ? JSON.parse(t) : null; } catch (e) {}
+      if (!r.ok) {
+        if (r.status === 401) { showLogin(); }
+        throw new Error((d && (d.error || d.detail)) || ('HTTP ' + r.status));
+      }
+      return d;
+    });
+  });
+}
+function showLogin() {
+  $('appView').classList.add('hidden');
+  $('loginView').classList.remove('hidden');
+  if (POLL) { clearInterval(POLL); POLL = null; }
+}
+function showApp() {
+  $('loginView').classList.add('hidden');
+  $('appView').classList.remove('hidden');
+  switchTab('overview');
+  if (POLL) clearInterval(POLL);
+  POLL = setInterval(function () { if (CUR === 'overview') loadOverview(); }, 8000);
+}
+
+// ---------------- 登录
+$('btnLogin').onclick = function () {
+  var pin = ($('pin').value || '').trim();
+  if (!pin) return;
+  $('btnLogin').disabled = true;
+  api('POST', '/api/login', { pin: pin }).then(function (res) {
+    if (res && res.ok) { $('loginMsg').textContent = ''; showApp(); }
+    else { $('loginMsg').textContent = (res && res.error) || 'PIN 不对'; }
+  }).catch(function (e) { $('loginMsg').textContent = e.message; })
+    .then(function () { $('btnLogin').disabled = false; });
+};
+$('pin').addEventListener('keydown', function (e) { if (e.key === 'Enter') $('btnLogin').click(); });
+$('btnLogout').onclick = function () {
+  api('POST', '/api/logout').then(showLogin).catch(showLogin);
+};
+
+// ---------------- Tab
+document.querySelectorAll('.tab').forEach(function (t) {
+  t.onclick = function () { switchTab(t.getAttribute('data-t')); };
+});
+function switchTab(name) {
+  CUR = name;
+  document.querySelectorAll('.tab').forEach(function (t) {
+    t.classList.toggle('on', t.getAttribute('data-t') === name);
+  });
+  ['overview','tasks','memory','persona','chat'].forEach(function (n) {
+    $('tab-' + n).classList.toggle('hidden', n !== name);
+  });
+  $('chatFoot').classList.toggle('hidden', name !== 'chat');
+  if (name === 'overview') loadOverview();
+  if (name === 'tasks') loadTasks();
+  if (name === 'memory') loadMemory();
+  if (name === 'persona') loadPersona();
+  if (name === 'chat') loadChat();
+}
+
+// ---------------- 概览
+function loadOverview() {
+  api('GET', '/api/state').then(function (d) {
+    if (!d || !d.ok) return;
+    $('clock').textContent = d.at || '';
+    var h = [];
+
+    // 待确认（最上面）
+    var cs = d.consent || [];
+    if (cs.length) {
+      h.push('<div class="card" style="border-color:#3a3222;background:rgba(224,163,85,.08)">');
+      h.push('<div class="card-t" style="color:#e0a355">⏳ 等你确认（' + cs.length + '）</div>');
+      cs.forEach(function (c) {
+        h.push('<div class="item" style="margin-top:8px">');
+        h.push('<div class="t">' + esc(c.target) + '</div>');
+        h.push('<div class="m" style="white-space:pre-wrap">' + esc((c.detail || '').slice(0, 300)) + '</div>');
+        h.push('<div class="row" style="margin-top:8px">');
+        h.push('<button class="btn p" data-cid="' + esc(c.id) + '" data-act="approve">同意</button>');
+        h.push('<button class="btn d" data-cid="' + esc(c.id) + '" data-act="deny">拒绝</button>');
+        h.push('</div></div>');
+      });
+      h.push('</div>');
+    }
+
+    // 三端
+    var pc = d.pc || {}, ph = d.phone || {}, rb = d.robot || {};
+    h.push('<div class="card">');
+    h.push('<div class="card-t">三端状态</div>');
+    h.push('<div class="kv"><span class="k">电脑</span><span class="v"><span class="dot on"></span>' +
+           esc(pc.foreground || '（拿不到）') + '</span></div>');
+    h.push('<div class="kv"><span class="k">手机</span><span class="v"><span class="dot ' +
+           (ph.online ? 'on' : 'off') + '"></span>' +
+           (ph.online ? ('在线' + (ph.foreground ? ' · ' + esc(ph.foreground) : '') +
+             (ph.shell === 'shizuku' ? '<span class="tag">shell权限</span>' : '')) : '离线') +
+           '</span></div>');
+    h.push('<div class="kv"><span class="k">机器人</span><span class="v"><span class="dot ' +
+           (rb.online ? 'on' : 'off') + '"></span>' + esc(rb.name || '未接入') + '</span></div>');
+    h.push('</div>');
+
+    // 最近会话
+    var ss = d.sessions || [];
+    h.push('<div class="card"><div class="card-t">最近会话</div>');
+    if (!ss.length) h.push('<div class="m">还没有</div>');
+    ss.slice(0, 6).forEach(function (s) {
+      h.push('<div class="kv"><span class="v">' + esc(s.title || '(无标题)') + '</span></div>');
+    });
+    h.push('</div>');
+
+    $('tab-overview').innerHTML = h.join('');
+
+    $('tab-overview').querySelectorAll('button[data-cid]').forEach(function (b) {
+      b.onclick = function () {
+        b.disabled = true;
+        var act = b.getAttribute('data-act');
+        var cid = b.getAttribute('data-cid');
+        api('POST', '/api/consent/' + act, { id: cid })
+          .then(loadOverview).catch(function (e) { alert(e.message); b.disabled = false; });
+      };
+    });
+  }).catch(function () { /* 忽略 */ });
+}
+
+// ---------------- 任务
+function loadTasks() {
+  api('GET', '/api/state').then(function (d) {
+    var ss = (d && d.sessions) || [];
+    var h = ['<div class="card"><div class="card-t">会话（可以中断正在跑的）</div>'];
+    if (!ss.length) h.push('<div class="m">还没有</div>');
+    ss.forEach(function (s) {
+      h.push('<div class="item"><div class="t">' + esc(s.title || '(无标题)') + '</div>');
+      h.push('<div class="m">' + esc(s.id) + '</div>');
+      h.push('<div class="row" style="margin-top:8px"><button class="btn d" data-sid="' +
+             esc(s.id) + '">中断这个</button></div></div>');
+    });
+    h.push('</div>');
+    $('tab-tasks').innerHTML = h.join('');
+    $('tab-tasks').querySelectorAll('button[data-sid]').forEach(function (b) {
+      b.onclick = function () {
+        if (!confirm('确定中断这个会话？')) return;
+        b.disabled = true;
+        api('POST', '/api/task/cancel', { session_id: b.getAttribute('data-sid') })
+          .then(function () { loadTasks(); }).catch(function (e) { alert(e.message); b.disabled = false; });
+      };
+    });
+  }).catch(function () { /* 忽略 */ });
+}
+
+// ---------------- 记忆
+function loadMemory(q) {
+  var url = '/api/memory?limit=40' + (q ? ('&q=' + encodeURIComponent(q)) : '');
+  api('GET', url).then(function (d) {
+    var items = (d && d.items) || [];
+    var h = ['<div class="card"><div class="card-t">记忆（' + items.length + '）</div>'];
+    h.push('<div class="row" style="margin-bottom:10px"><input id="memQ" placeholder="搜一下…" value="' + esc(q || '') + '">');
+    h.push('<button class="btn" id="memSearch">搜</button></div>');
+    items.forEach(function (m) {
+      h.push('<div class="item"><div class="t">' + esc(m.content) + '</div>');
+      h.push('<div class="m">#' + m.id + ' · ' + esc(m.category) + ' · 重要度 ' +
+             (m.importance || 0).toFixed ? (m.importance || 0).toFixed(2) : m.importance + '</div>');
+      h.push('<div class="row" style="margin-top:8px">');
+      h.push('<button class="btn" data-mid="' + m.id + '" data-act="edit">改</button>');
+      h.push('<button class="btn d" data-mid="' + m.id + '" data-act="del">删</button>');
+      h.push('</div></div>');
+    });
+    h.push('</div>');
+    $('tab-memory').innerHTML = h.join('');
+
+    $('memSearch').onclick = function () { loadMemory(($('memQ').value || '').trim()); };
+    $('memQ').addEventListener('keydown', function (e) { if (e.key === 'Enter') $('memSearch').click(); });
+
+    $('tab-memory').querySelectorAll('button[data-mid]').forEach(function (b) {
+      b.onclick = function () {
+        var id = parseInt(b.getAttribute('data-mid'), 10);
+        var act = b.getAttribute('data-act');
+        if (act === 'del') {
+          if (!confirm('确定删掉这条记忆？')) return;
+          api('POST', '/api/memory/forget', { id: id }).then(function () { loadMemory(); });
+        } else {
+          var cur = '';
+          items.forEach(function (m) { if (m.id === id) cur = m.content; });
+          var v = prompt('改成什么？', cur);
+          if (v === null || !v.trim()) return;
+          api('POST', '/api/memory/update', { id: id, content: v.trim() })
+            .then(function () { loadMemory(); });
+        }
+      };
+    });
+  }).catch(function () { /* 忽略 */ });
+}
+
+// ---------------- 人格
+function loadPersona() {
+  api('GET', '/api/persona').then(function (d) {
+    var h = ['<div class="card"><div class="card-t">人格设定（docs/PERSONA.md）</div>'];
+    h.push('<div class="m" style="margin-bottom:8px">改完下一轮就生效，会自动备份旧版。</div>');
+    h.push('<textarea id="personaText" style="min-height:380px;font-size:12px;font-family:ui-monospace,monospace">' +
+           esc((d && d.text) || '') + '</textarea>');
+    h.push('<div class="row" style="margin-top:10px"><button class="btn p" id="personaSave">保存</button>');
+    h.push('<span class="m" id="personaMsg"></span></div></div>');
+    $('tab-persona').innerHTML = h.join('');
+    $('personaSave').onclick = function () {
+      $('personaSave').disabled = true;
+      api('POST', '/api/persona', { text: $('personaText').value })
+        .then(function (r) {
+          $('personaMsg').textContent = r && r.ok ? ('已保存，备份 ' + (r.backup || '')) : '保存失败';
+        }).catch(function (e) { $('personaMsg').textContent = e.message; })
+        .then(function () { $('personaSave').disabled = false; });
+    };
+  }).catch(function () { /* 忽略 */ });
+}
+
+// ---------------- 对话
+function loadChat() {
+  api('GET', '/api/chat').then(function (d) {
+    var items = (d && d.items) || [];
+    var h = ['<div class="card" style="min-height:60vh"><div class="card-t">跟小伴说话（PC 端）</div>'];
+    h.push('<div class="m" style="margin-bottom:10px">你有事可以直接问它。危险指令要确认时，它也会在这里问你。</div>');
+    h.push('<div id="chatLog" style="max-height:58vh;overflow-y:auto">');
+    items.forEach(function (m) {
+      var cls = m.role === 'user' ? 'me' : 'ai';
+      h.push('<div class="msg ' + cls + '">' + esc(m.content || '') + '</div>');
+    });
+    h.push('</div></div>');
+    $('tab-chat').innerHTML = h.join('');
+    var log = $('chatLog');
+    if (log) log.scrollTop = log.scrollHeight;
+  }).catch(function () { /* 忽略 */ });
+}
+
+$('btnChatSend').onclick = function () {
+  var v = ($('chatInput').value || '').trim();
+  if (!v) return;
+  $('chatInput').value = '';
+  $('btnChatSend').disabled = true;
+  var log = $('chatLog');
+  if (log) {
+    var me = document.createElement('div');
+    me.className = 'msg me';
+    me.textContent = v;
+    log.appendChild(me);
+    log.scrollTop = log.scrollHeight;
+  }
+  api('POST', '/api/chat', { text: v }).then(function (r) {
+    if (log && r && r.reply) {
+      var ai = document.createElement('div');
+      ai.className = 'msg ai';
+      ai.textContent = r.reply;
+      log.appendChild(ai);
+      log.scrollTop = log.scrollHeight;
+    }
+  }).catch(function (e) {
+    if (log) {
+      var er = document.createElement('div');
+      er.className = 'msg sys';
+      er.textContent = '出错：' + e.message;
+      log.appendChild(er);
+    }
+  }).then(function () { $('btnChatSend').disabled = false; });
+};
+$('chatInput').addEventListener('keydown', function (e) {
+  if (e.key === 'Enter') $('btnChatSend').click();
+});
+
+// 启动：先试一下有没有登录态
+api('GET', '/api/state').then(function () { showApp(); }).catch(function () { showLogin(); });
+</script>
+</body>
+</html>

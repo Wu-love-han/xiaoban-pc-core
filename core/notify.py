@@ -83,7 +83,7 @@ def toast_async(title: str, body: str, key: str = "") -> None:
 
 def notify_proactive(text: str, kind: str = "note") -> None:
     """主动消息 → 系统通知。"""
-    title = {"reminder": "小伴提醒", "alert": "小伴提醒 · 注意"}.get(kind, "小伴")
+    title = {"reminder": "小伴提醒", "alert": "小伴 · 需要你处理", "notice": "小伴"}.get(kind, "小伴")
     toast_async(title, text, key="proactive")
 
 

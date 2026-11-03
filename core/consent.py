@@ -74,10 +74,21 @@ def create(kind: str, target: str, detail: str = "") -> dict:
             (cid, (kind or "other")[:24], (target or "")[:200], (detail or "")[:1000], ts),
         )
     logger.info("待确认 #%s [%s] %s", cid, kind, target)
+    # 1) 电脑上弹系统通知
     try:
         from . import notify  # noqa: PLC0415
 
         notify.notify_consent(target, detail)
+    except Exception:  # noqa: BLE001
+        pass
+    # 2) 推到主动消息通道（手机 App 会弹出来，第一时间知道）
+    try:
+        from . import proactive  # noqa: PLC0415
+
+        proactive.push(
+            f"有件事等你点头：{target}。{detail[:120]}\n去控制台（:8771）点同意或拒绝。",
+            kind="alert", source="consent", priority=3,
+        )
     except Exception:  # noqa: BLE001
         pass
     return {"id": cid, "kind": kind, "target": target, "detail": detail, "status": "pending"}

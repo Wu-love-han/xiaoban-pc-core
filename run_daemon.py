@@ -53,9 +53,24 @@ def start() -> subprocess.Popen:
     return subprocess.Popen(cmd, cwd=str(ROOT))
 
 
+def start_console() -> subprocess.Popen | None:
+    """控制台是独立进程（端口 8771）：AI 的工具够不到它。"""
+    script = ROOT / "console" / "server.py"
+    if not script.exists():
+        log("没找到控制台脚本，跳过")
+        return None
+    log("启动控制台 0.0.0.0:8771")
+    try:
+        return subprocess.Popen([PYTHON, str(script)], cwd=str(ROOT))
+    except Exception as exc:  # noqa: BLE001
+        log(f"控制台启动失败：{exc}")
+        return None
+
+
 def main() -> None:
     global child, crashes
     log("=== 小伴守护进程启动 ===")
+    console = start_console()
     child = start()
     while True:
         try:
@@ -81,6 +96,11 @@ def main() -> None:
                 child.wait(timeout=10)
             except Exception:
                 child.kill()
+            try:
+                if console:
+                    console.terminate()
+            except Exception:
+                pass
             break
 
 
