@@ -55,6 +55,7 @@
       </button>
       <div class="side-label">最近</div>
       <div class="session-list" id="session-list"></div>
+      <button class="new-btn" id="btn-dashboard" type="button" style="margin-top:8px;background:#1b2029;color:#8a93a5">📊 后台看板</button>
       <div class="side-foot" id="side-foot">连接中…</div>
     </aside>
 
@@ -91,6 +92,16 @@
     </aside>
 
   </main>
+
+  <div id="dash" hidden style="position:fixed;inset:0;z-index:60;background:rgba(0,0,0,.72);overflow:auto;padding:24px">
+    <div style="max-width:900px;margin:0 auto;background:#0f1115;border:1px solid #232936;border-radius:12px;padding:20px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+        <strong style="color:#e6e9ef;font-size:16px">小伴 · 后台看板</strong>
+        <button class="btn ghost" id="dash-close" type="button">关闭</button>
+      </div>
+      <div id="dash-body" style="color:#c8cdd8;font-size:13px;line-height:1.7">加载中…</div>
+    </div>
+  </div>
 </div>
 
 <div class="drawer-mask" id="drawer-mask" hidden></div>

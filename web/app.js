@@ -110,6 +110,16 @@
 
   function esc(v) { return v == null ? '' : String(v); }
 
+  /* HTML 转义：看板用 innerHTML 拼字符串，必须转义服务端文本 */
+  function escapeHtml(v) {
+    return String(v == null ? '' : v)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
   function trunc(s, n) {
     s = String(s == null ? '' : s).replace(/\s+/g, ' ').trim();
     return s.length > n ? s.slice(0, n - 1) + '…' : s;
@@ -1255,6 +1265,56 @@
     $('btn-save').addEventListener('click', saveConfig);
     if (dom.btnPluginInstall) dom.btnPluginInstall.addEventListener('click', installPlugin);
     if (dom.btnMarketRefresh) dom.btnMarketRefresh.addEventListener('click', renderMarket);
+
+    // ---- 后台看板 ----
+    var dash = $('dash');
+    var dashBody = $('dash-body');
+    function openDash() {
+      if (!dash) return;
+      dash.hidden = false;
+      dashBody.textContent = '加载中…';
+      api('GET', '/api/dashboard').then(function (res) {
+        if (!res || !res.ok) { dashBody.textContent = '读不到数据'; return; }
+        var h = [];
+        var sync = res.sync || {};
+        h.push('<div style="margin-bottom:14px"><strong style="color:#4ec9b0">终端</strong>（' +
+               (sync.online || 0) + '/' + (sync.terminals || 0) + ' 在线，待执行指令 ' +
+               (sync.pending_commands || 0) + '）</div>');
+        (res.terminals || []).forEach(function (t) {
+          h.push('<div style="padding-left:12px">' + (t.online ? '🟢' : '⚪') + ' ' +
+                 (t.name || t.id) + ' <span style="color:#6b7280">(' + t.kind + ')</span></div>');
+        });
+
+        h.push('<div style="margin:16px 0 8px"><strong style="color:#4ec9b0">工具使用 TOP</strong></div>');
+        (res.tool_usage || []).forEach(function (t) {
+          h.push('<div style="padding-left:12px">' + t.name + ' — ' + t.n + ' 次（成功 ' + (t.ok_n || 0) + '）</div>');
+        });
+
+        h.push('<div style="margin:16px 0 8px"><strong style="color:#4ec9b0">最近日志</strong></div>');
+        (res.logs || []).slice().reverse().forEach(function (l) {
+          var t = new Date(l.ts_ms || 0);
+          var hh = ('0' + t.getHours()).slice(-2) + ':' + ('0' + t.getMinutes()).slice(-2);
+          h.push('<div style="padding-left:12px;color:#9aa3b2">' + hh + ' [' + (l.tid || '') + '/' + (l.kind || '') + '] ' +
+                 escapeHtml((l.text || '').slice(0, 120)) + '</div>');
+        });
+
+        h.push('<div style="margin:16px 0 8px"><strong style="color:#4ec9b0">最近指令</strong></div>');
+        var cmds = res.commands || [];
+        if (!cmds.length) h.push('<div style="padding-left:12px;color:#6b7280">还没有指令</div>');
+        cmds.forEach(function (c) {
+          var flag = c.status === 'done' ? '✅' : (c.status === 'failed' ? '❌' : '⏳');
+          h.push('<div style="padding-left:12px">' + flag + ' ' + (c.from_tid || '') + ' → ' + (c.to_tid || '') +
+                 '：' + escapeHtml((c.text || '').slice(0, 60)) + '</div>');
+        });
+
+        dashBody.innerHTML = h.join('');
+      }).catch(function (e) {
+        dashBody.textContent = '读取失败：' + e.message;
+      });
+    }
+    if ($('btn-dashboard')) $('btn-dashboard').addEventListener('click', openDash);
+    if ($('dash-close')) $('dash-close').addEventListener('click', function () { $('dash').hidden = true; });
+    if (dash) dash.addEventListener('click', function (e) { if (e.target === dash) dash.hidden = true; });
     if (dom.btnGhSearch) dom.btnGhSearch.addEventListener('click', searchGithub);
     if (dom.ghSearch) dom.ghSearch.addEventListener('keydown', function (e) {
       if (e.key === 'Enter') { e.preventDefault(); searchGithub(); }
