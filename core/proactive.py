@@ -71,6 +71,13 @@ def push(text: str, kind: str = "note", source: str = "manual", priority: int = 
         )
         mid = int(cur.lastrowid)
     logger.info("主动消息入队 #%s [%s] %s", mid, kind, text[:60])
+    # 同时弹系统通知，人在别的软件上也能看到
+    try:
+        from . import notify  # noqa: PLC0415
+
+        notify.notify_proactive(text, kind)
+    except Exception:  # noqa: BLE001
+        pass
     return mid
 
 

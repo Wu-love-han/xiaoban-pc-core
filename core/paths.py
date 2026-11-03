@@ -28,6 +28,8 @@ PERSONA_FILE = DOCS / "PERSONA.md"
 DEFAULT_CONFIG: dict = {
     "server": {
         "host": "127.0.0.1",
+        # 后台看板专用 token：只给人看，不下发给手机 App
+        "admin_token": "",
         "port": 8770,
         # 留空 = 不校验（本机开发）。要给手机/局域网用时必须填，并改 host 为 0.0.0.0
         "auth_token": "",

@@ -104,4 +104,44 @@ async def require_auth(
     )
 
 
-__all__ = ["require_auth", "auth_enabled", "expected_token", "is_loopback", "HEADER_NAME"]
+ADMIN_HEADER = "X-Admin-Token"
+
+
+def expected_admin_token() -> str:
+    """后台管理 token：只给「人」用，不随手机 App 下发。"""
+    try:
+        from core import config as cfg_mod  # noqa: PLC0415
+
+        return str(((cfg_mod.load().get("server") or {}).get("admin_token")) or "").strip()
+    except Exception:  # noqa: BLE001
+        return ""
+
+
+async def require_admin(
+    request: Request,
+    x_admin_token: str | None = Header(default=None, alias=ADMIN_HEADER),
+) -> None:
+    """后台管理接口：本机回环放行，外部必须带 admin token。
+
+    手机 App 只有普通 auth_token，拿不到 admin_token，所以手机端 AI 进不来。
+    """
+    if is_loopback(request):
+        return
+
+    want = expected_admin_token()
+    if not want:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="没配置 admin_token，后台只允许在本机访问",
+        )
+    got = (x_admin_token or "").strip()
+    if got and hmac.compare_digest(got, want):
+        return
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="后台需要 X-Admin-Token（这个 token 不下发给手机）",
+    )
+
+
+__all__ = ["require_auth", "require_admin", "auth_enabled", "expected_token",
+           "expected_admin_token", "is_loopback", "HEADER_NAME", "ADMIN_HEADER"]

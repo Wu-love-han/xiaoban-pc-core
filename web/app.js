@@ -167,12 +167,18 @@
   }
 
   /* ================================================================ HTTP */
+  var ADMIN_KEY = 'pc_admin_token';
+
   function headers(extra) {
     var h = {};
     if (extra) for (var k in extra) h[k] = extra[k];
     var t = '';
     try { t = localStorage.getItem(TOKEN_KEY) || ''; } catch (e) { t = ''; }
     if (t) h['X-PC-Token'] = t;
+    // 后台管理 token：只存在电脑本机浏览器里，不下发给手机 App
+    var a = '';
+    try { a = localStorage.getItem(ADMIN_KEY) || ''; } catch (e) { a = ''; }
+    if (a) h['X-Admin-Token'] = a;
     return h;
   }
 
@@ -1275,10 +1281,41 @@
     // ---- 后台看板 ----
     var dash = $('dash');
     var dashBody = $('dash-body');
+    function renderConsent() {
+      var box = $('dash-consent');
+      if (!box) return;
+      api('GET', '/api/consent/pending').then(function (res) {
+        var items = (res && res.items) || [];
+        if (!items.length) { box.innerHTML = ''; return; }
+        var h = ['<div style="margin-bottom:8px;color:#e0a355;font-weight:600">⏳ 等你确认（' + items.length + '）</div>'];
+        items.forEach(function (it) {
+          h.push('<div style="border:1px solid #3a3222;background:rgba(224,163,85,.08);border-radius:8px;padding:10px;margin-bottom:8px">');
+          h.push('<div style="color:#e6e9ef;font-weight:600">' + escapeHtml(it.target) + '</div>');
+          h.push('<div style="color:#9aa3b2;font-size:12px;white-space:pre-wrap;margin:6px 0">' + escapeHtml((it.detail || '').slice(0, 400)) + '</div>');
+          h.push('<div style="display:flex;gap:8px">');
+          h.push('<button class="btn primary" data-cid="' + escapeHtml(it.id) + '" data-act="approve" type="button" style="font-size:12px">同意</button>');
+          h.push('<button class="btn ghost" data-cid="' + escapeHtml(it.id) + '" data-act="deny" type="button" style="font-size:12px">拒绝</button>');
+          h.push('</div></div>');
+        });
+        box.innerHTML = h.join('');
+        box.querySelectorAll('button[data-cid]').forEach(function (b) {
+          b.onclick = function () {
+            var act = b.getAttribute('data-act');
+            var cid = b.getAttribute('data-cid');
+            b.disabled = true;
+            api('POST', '/api/consent/' + act, { id: cid })
+              .then(function () { renderConsent(); })
+              .catch(function (e) { showBanner('操作失败：' + e.message); b.disabled = false; });
+          };
+        });
+      }).catch(function () { box.innerHTML = ''; });
+    }
+
     function openDash() {
       if (!dash) return;
       dash.hidden = false;
       dashBody.textContent = '加载中…';
+      renderConsent();
       api('GET', '/api/dashboard').then(function (res) {
         if (!res || !res.ok) { dashBody.textContent = '读不到数据'; return; }
         var h = [];
@@ -1315,7 +1352,24 @@
 
         dashBody.innerHTML = h.join('');
       }).catch(function (e) {
-        dashBody.textContent = '读取失败：' + e.message;
+        var bar = $('dash-admin-bar');
+        var msg = e.message || '';
+        if (/admin|403|令牌/i.test(msg) && bar) {
+          bar.style.display = 'block';
+          dashBody.textContent = '后台需要管理令牌。填一次就会记住。';
+        } else {
+          dashBody.textContent = '读取失败：' + msg;
+        }
+      });
+    }
+
+    if ($('dash-admin-save')) {
+      $('dash-admin-save').addEventListener('click', function () {
+        var v = ($('dash-admin-input').value || '').trim();
+        if (!v) return;
+        try { localStorage.setItem(ADMIN_KEY, v); } catch (e) { /* 忽略 */ }
+        $('dash-admin-bar').style.display = 'none';
+        openDash();
       });
     }
     if ($('btn-dashboard')) $('btn-dashboard').addEventListener('click', openDash);
