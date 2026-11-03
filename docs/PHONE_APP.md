@@ -78,3 +78,28 @@ firmware/phone-app/
 ├── res/mipmap-*/ic_launcher.png 图标
 └── src/com/xiaoban/app/MainActivity.java
 ```
+
+
+## 2026-11-03 更新：缓存坑 + Tailscale 连接方法
+
+### 缓存坑（已修）
+手机 WebView + Service Worker 双层缓存，改了前端手机上还是旧的。
+修法：
+1. 服务端给 `.html/.js/.css/.webmanifest` 加 `Cache-Control: no-cache`
+2. App 的 WebView 设 `LOAD_NO_CACHE`
+3. 实在不行：`adb shell pm clear com.xiaoban.app`
+
+### 打开 Tailscale（解决远距离）
+用 adb 可以直接点开并连接：
+
+```bash
+adb shell am start -n com.tailscale.ipn/.MainActivity
+# 等界面出来后点 Connect 按钮（坐标约 540,1372）
+adb shell input tap 540 1372
+```
+
+连上后手机 `tun0` 会拿到 `100.115.152.111`，PC 端 `tailscale status` 显示 `active`。
+
+### 底部显示的地址
+侧边栏底部显示「局域网 · 172.30.0.217:8770」或「Tailscale · 100.118.110.25:8770」，
+表示手机当前实际连的是哪条路。

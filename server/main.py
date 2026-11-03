@@ -183,6 +183,9 @@ mimetypes.add_type("application/manifest+json", ".webmanifest")
 mimetypes.add_type("text/javascript", ".js")
 
 
+_NO_CACHE_EXT = (".html", ".js", ".css", ".webmanifest")
+
+
 def create_app() -> FastAPI:
     app = FastAPI(
         title="pc-core",
@@ -193,6 +196,17 @@ def create_app() -> FastAPI:
         redoc_url=None,
         openapi_url="/api/openapi.json",
     )
+
+    @app.middleware("http")
+    async def no_cache_static(request: Request, call_next):
+        """静态前端资源禁缓存：手机 WebView 缓存旧版会导致改了不生效（实测踩过）。"""
+        resp = await call_next(request)
+        path = request.url.path
+        if path == "/" or path.endswith(_NO_CACHE_EXT):
+            resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+            resp.headers["Pragma"] = "no-cache"
+        return resp
+
 
     # -------------------------------------------------------------- CORS
     # 本机开发：前端可能从 http://localhost:xxxx 或 file:// 直接打开页面来调接口。

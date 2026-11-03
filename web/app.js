@@ -1279,6 +1279,16 @@
 
   /* ================================================================ 启动 */
   function boot() {
+    // 底部显示「手机当前连的是哪个地址」（不是服务端绑定地址）
+    try {
+      var foot = $('side-foot');
+      if (foot) {
+        var host = location.host || '127.0.0.1:8770';
+        var tag = /^100\./.test(host) ? 'Tailscale' : (/^172\.|^192\.168\.|^10\./.test(host) ? '局域网' : '本机');
+        foot.textContent = tag + ' · ' + host;
+      }
+    } catch (e) { /* 忽略 */ }
+
     bind();
     autosize();
 
