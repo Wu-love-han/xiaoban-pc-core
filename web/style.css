@@ -827,10 +827,26 @@ code { font-family: var(--mono); font-size: 0.92em; }
 .plugin-install-row { display:flex; gap:6px; }
 .plugin-install-row input { flex:1; min-width:0; }
 .plugin-list { margin-top:8px; display:flex; flex-direction:column; gap:6px; }
-.plugin-item { display:flex; align-items:center; gap:8px; padding:6px 8px; border:1px solid var(--line,#2a2e38); border-radius:6px; font-size:12px; }
-.plugin-item .pi-name { font-weight:600; }
-.plugin-item .pi-meta { color:var(--muted,#8a93a5); flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+/* 插件条目：仓库名/描述长的时候要能换行看完，不能截断 */
+.plugin-item {
+  display: flex; flex-wrap: wrap; align-items: flex-start; gap: 4px 8px;
+  padding: 8px; border: 1px solid var(--line,#2a2e38); border-radius: 6px;
+  font-size: 12px; line-height: 1.5;
+}
+.plugin-item .pi-name {
+  font-weight: 600; flex: 1 1 100%; min-width: 0;
+  word-break: break-all; overflow-wrap: anywhere;
+  color: #e6e9ef;
+}
+.plugin-item .pi-meta {
+  color: var(--muted,#8a93a5); flex: 1 1 100%; min-width: 0;
+  white-space: normal; word-break: break-word; overflow-wrap: anywhere;
+}
 .plugin-item .pi-x { background:none; border:none; color:var(--err,#e05555); cursor:pointer; font-size:12px; }
+
+/* GitHub 搜索结果：名字 + 描述分行显示，给足高度 */
+#gh-results .plugin-item { align-items: stretch; }
+#gh-results .plugin-item > button { align-self: flex-start; margin-left: auto; }
 
 /* ---------------- 移动端 / PWA 优化（2026-11-02） ---------------- */
 @media (max-width: 720px) {

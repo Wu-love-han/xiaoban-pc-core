@@ -73,3 +73,41 @@ async def download():
         media_type="application/vnd.android.package-archive",
         filename="xiaoban.apk",
     )
+
+
+@router.get("/brain")
+async def brain_config():
+    """把模型配置下发给手机 App。
+
+    手机缓存后，PC 离线时也能自己调模型干活（C 方案：混合模式）。
+    """
+    try:
+        from core import config as cfg_mod  # noqa: PLC0415
+
+        cfg = cfg_mod.load()
+        brain = cfg.get("brain") or {}
+        pname = brain.get("provider") or "gateway"
+        providers = cfg.get("providers") or {}
+        conf = providers.get(pname) or providers.get("gateway") or {}
+
+        base_url = str(conf.get("base_url") or "").rstrip("/")
+        api_key = str(conf.get("api_key") or "")
+
+        # 手机只能直连公网地址；127.0.0.1 是 PC 本机，手机用不了
+        usable = bool(base_url) and "127.0.0.1" not in base_url and "localhost" not in base_url
+
+        return {
+            "ok": True,
+            "usable": usable,
+            "baseUrl": base_url,
+            "apiKey": api_key,
+            "model": str(brain.get("model") or ""),
+            "reason": "" if usable else (
+                "当前模型走的是 PC 本机网关（127.0.0.1），手机直连不了。"
+                "要手机离线也能用，请在 config.json 的 providers.deepseek 里填官网 API key，"
+                "并把 brain.provider 改成 deepseek。"
+            ),
+        }
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("下发模型配置失败")
+        return {"ok": False, "usable": False, "error": f"{type(exc).__name__}: {exc}"}

@@ -986,8 +986,14 @@
       name.style.cursor = 'pointer';
       name.title = r.description || '';
       row.appendChild(name);
-      var meta = '⭐' + (r.stars || 0) + (r.language ? ' · ' + r.language : '') + (r.description ? ' · ' + r.description : '');
+      var meta = '⭐' + (r.stars || 0) + (r.language ? ' · ' + r.language : '') +
+                 (r.matchLevel ? ' · ' + r.matchLevel : '');
       row.appendChild(el('span', 'pi-meta', meta));
+      if (r.description) {
+        var desc = el('span', 'pi-meta', r.description);
+        desc.style.cssText = 'flex:1 1 100%;color:#9aa3b2;font-size:11px;line-height:1.45;word-break:break-word';
+        row.appendChild(desc);
+      }
       var b = el('button', 'btn ghost', '安装');
       b.type = 'button';
       b.style.cssText = 'font-size:11px;padding:2px 8px;flex-shrink:0';
