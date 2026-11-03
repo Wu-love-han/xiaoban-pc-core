@@ -1378,7 +1378,14 @@
         openDash();
       });
     }
-    if ($('btn-dashboard')) $('btn-dashboard').addEventListener('click', openDash);
+    // 后台看板按钮 → 直接跳独立控制台（8771 端口，PIN 保护，手机也能进）
+    if ($('btn-dashboard')) {
+      $('btn-dashboard').addEventListener('click', function () {
+        var host = location.hostname || '127.0.0.1';
+        var url = 'http://' + host + ':8771';
+        window.open(url, '_blank');
+      });
+    }
     if ($('dash-close')) $('dash-close').addEventListener('click', function () { $('dash').hidden = true; });
     if (dash) dash.addEventListener('click', function (e) { if (e.target === dash) dash.hidden = true; });
     if (dom.btnGhSearch) dom.btnGhSearch.addEventListener('click', searchGithub);
