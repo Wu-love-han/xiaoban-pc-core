@@ -140,9 +140,19 @@ def _build_messages(session_id: str, user_text: str) -> list[dict]:
     except Exception:  # noqa: BLE001
         proc_hint = ""
     memory_block = "\n\n".join([x for x in (grand, mem, proc_hint) if x])
+
+    # 身体状态：让模型知道自己现在能操作什么（手机无障碍 / 桌面鼠标键盘 / 自更新）
+    try:
+        from . import body_state  # noqa: PLC0415
+
+        body_block = body_state.describe()
+    except Exception:  # noqa: BLE001
+        body_block = ""
+
     system = persona.build_system_prompt(
         tool_catalog=registry.catalog_for_prompt(),
         memory_block=memory_block,
+        body_block=body_block,
     )
     msgs: list[dict] = [{"role": "system", "content": system}]
     # 历史里如果有模型曾经吐出的 XML 工具调用文本，必须过滤掉，

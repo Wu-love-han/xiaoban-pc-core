@@ -75,12 +75,14 @@ def base_prompt() -> str:
     return _read_raw()
 
 
-def build_system_prompt(tool_catalog: str = "", memory_block: str = "") -> str:
-    """拼最终 system prompt：人格 + 当前工具清单 + 记忆。
+def build_system_prompt(tool_catalog: str = "", memory_block: str = "", body_block: str = "") -> str:
+    """拼最终 system prompt：人格 + 身体状态 + 当前工具清单 + 记忆。
 
-    工具清单每轮动态生成，所以新加工具模型立刻知道。
+    工具清单和身体状态每轮动态生成，所以能力一变模型立刻知道。
     """
     parts = [base_prompt()]
+    if body_block:
+        parts.append("\n【你现在的身体】\n" + body_block)
     if tool_catalog:
         parts.append("\n【你现在能用的工具】\n" + tool_catalog)
     if memory_block:

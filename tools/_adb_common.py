@@ -343,3 +343,20 @@ def app_key(name: str) -> tuple[bool, str]:
     if not ok:
         return False, str(data.get("error") or "连不上手机 App")
     return (True, f"按了 {name}") if data.get("ok") else (False, str(data.get("error") or "按键失败"))
+
+
+# ---------------------------------------------------------------- 手机 shell（Shizuku）
+
+def app_shell_info() -> dict:
+    ok, data = _app_request("/shell/info")
+    return data if ok else {"ok": False, "error": str(data.get("error") or "")}
+
+
+def app_shell(cmd: str, timeout_s: int = 15) -> tuple[bool, str, str]:
+    """在手机上跑命令。level=shizuku 时是 shell 权限（uid 2000）。"""
+    ok, data = _app_request("/shell", method="POST",
+                            body={"cmd": cmd, "timeout": int(timeout_s) * 1000},
+                            timeout=float(timeout_s) + 10)
+    if not ok:
+        return False, str(data.get("error") or "连不上手机 App"), ""
+    return True, str(data.get("output") or ""), str(data.get("level") or "")
