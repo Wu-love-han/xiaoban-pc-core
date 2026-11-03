@@ -479,7 +479,12 @@ def _check_behavior(r: sqlite3.Row, now_dt: datetime, now_min: str) -> int:
 
 
 def tick_once() -> dict:
-    """检查一轮所有启用的行为，返回这轮干了什么（供线程和测试用）。"""
+    """检查一轮所有启用的行为，返回这轮干了什么（供线程和测试用）。
+
+    同时做两件主动的事：
+      1. 把触发到的行为转成「主动消息」推给前端（小伴主动开口）
+      2. 看一眼资源，紧张就提醒
+    """
     _ensure_init()
     now_dt = _now_dt()
     now_min = _min_str(now_dt)
@@ -490,6 +495,29 @@ def tick_once() -> dict:
             fired += _check_behavior(r, now_dt, now_min)
         except Exception:  # noqa: BLE001 - 一条行为坏掉不能拖垮整轮检查
             logger.exception("行为 %s 检查出错，跳过", r["id"])
+
+    # 队列里的消息 → 主动消息通道（让前端能弹出来）
+    try:
+        from . import proactive  # noqa: PLC0415
+
+        for m in drain_queue():
+            proactive.push(
+                m.get("text") or "",
+                kind="reminder",
+                source="autopilot",
+                priority=2 if m.get("kind") in ("time", "greeting") else 1,
+            )
+    except Exception:  # noqa: BLE001
+        logger.warning("转主动消息失败", exc_info=True)
+
+    # 资源告急主动提醒
+    try:
+        from . import proactive  # noqa: PLC0415
+
+        proactive.check_resources()
+    except Exception:  # noqa: BLE001
+        logger.debug("资源检查失败", exc_info=True)
+
     return {"checked_at": now_min, "checked": len(rows), "fired": fired}
 
 

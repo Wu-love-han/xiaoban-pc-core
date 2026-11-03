@@ -45,11 +45,24 @@ def run(args: dict, ctx: Any) -> dict:
 
     scope = str(args.get("scope") or "global").strip() or "global"
 
+    category = str(args.get("category") or args.get("scene") or "通用").strip() or "通用"
+
     try:
         C.ensure_db()
         from core import db
 
         res = db.remember(key, value, scope=scope)
+        # 同时写进分层记忆库（带分类/重要度），这样能按场景和时间检索
+        try:
+            from core import memory_engine  # noqa: PLC0415
+
+            memory_engine.init()
+            memory_engine.remember_long_term(
+                value, category=category,
+                importance=args.get("importance", 0.6),
+            )
+        except Exception:  # noqa: BLE001
+            pass
     except Exception as exc:  # noqa: BLE001
         return C.fail(
             f"这条我记到一半出错了（{type(exc).__name__}），可能数据库没准备好。",

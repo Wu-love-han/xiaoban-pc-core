@@ -27,8 +27,10 @@ from . import _common as C
 TIMEOUT_S = 20
 MAX_BYTES = 20000  # 原始输出先留足，最终由 _common.clip 压到 3000
 
-# 命令串联 / 重定向 / 子命令替换：白名单是前缀匹配，不拦这些等于没拦
-_FORBIDDEN = re.compile(r"[&|;<>`\n\r]|\$\(")
+# 重定向 / 串联 / 子命令替换：一律禁止（能写文件或变成多条命令）
+_FORBIDDEN = re.compile(r"[&;<>`\n\r]|\$\(")
+# 管道单独处理：只允许「每段都是白名单只读命令」的管道，且管道后不能再接危险东西
+_PIPE = re.compile(r"\|")
 # 通配符不算危险，但会撑爆输出；允许，交给输出截断处理
 _WS = re.compile(r"\s+")
 
@@ -85,13 +87,29 @@ def run(args: dict, ctx: Any) -> dict:
             "NotWhitelisted",
         )
 
+    # 重定向 / 串联 / 子命令替换：一律拒绝
     bad = _FORBIDDEN.search(cmd)
     if bad:
         return C.fail(
-            f"这条命令里有「{bad.group(0)}」，能把一条命令变成多条或者改文件，"
+            f"这条命令里有「{bad.group(0)}」，能写文件或变成多条命令，"
             f"就算开头是「{hit}」我也不跑。要做得拆成单独的命令。",
             "CommandChaining",
         )
+
+    # 管道：只允许「每一段都是白名单只读命令」的管道（如 netstat -an | findstr :8770）
+    if _PIPE.search(cmd):
+        segments = [seg.strip() for seg in cmd.split("|")]
+        if any(not seg for seg in segments):
+            return C.fail("管道两边都得有命令。", "BadPipe")
+        for seg in segments:
+            if _match_whitelist(seg, whitelist) is None:
+                return C.fail(
+                    f"管道里的「{seg}」不在白名单里。管道只允许两边都是只读命令，"
+                    f"比如 `netstat -an | findstr :8770`。",
+                    "PipeNotWhitelisted",
+                )
+        if len(segments) > 3:
+            return C.fail("管道最多接 3 段，太长了不好审。", "PipeTooLong")
 
     # 绝对路径 / 带目录的命令不许走白名单（防止 C:\...\evil.exe）
     first = cmd.split(" ", 1)[0]

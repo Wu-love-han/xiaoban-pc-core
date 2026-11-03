@@ -259,13 +259,39 @@ def list_long_term(limit: int = 100) -> list[dict]:
         return []
 
 
-def recall_long_term(query_text: str = "", limit: int = 6) -> list[dict]:
-    """召回长期记忆：有关键词时做 LIKE 匹配，否则按重要度取 Top N。
+def recall_long_term(
+    query_text: str = "",
+    limit: int = 6,
+    since_ms: int = 0,
+    until_ms: int = 0,
+    category: str = "",
+) -> list[dict]:
+    """召回长期记忆：有关键词做 LIKE 匹配，否则按重要度取 Top N。
+
+    支持按时间范围（since_ms / until_ms）和分类（category）过滤——
+    小伴的需求：「记忆支持按时间、按场景检索，而不只是关键词匹配」。
 
     召回会更新 last_recalled_at 与 recall_count（表示「被想起过一次」）。
     """
     q = (query_text or "").strip()
     limit = max(1, int(limit))
+    since_ms = int(since_ms or 0)
+    until_ms = int(until_ms or 0)
+    category = (category or "").strip()
+
+    # 时间 / 分类过滤片段
+    extra_sql = ""
+    extra_params: list[Any] = []
+    if since_ms > 0:
+        extra_sql += " AND created_at >= ?"
+        extra_params.append(since_ms)
+    if until_ms > 0:
+        extra_sql += " AND created_at <= ?"
+        extra_params.append(until_ms)
+    if category:
+        extra_sql += " AND category = ?"
+        extra_params.append(category)
+
     try:
         if q:
             # 单字 + 双字滑窗，和 core.db.recall 的思路一致，不做向量。
@@ -280,16 +306,18 @@ def recall_long_term(query_text: str = "", limit: int = 6) -> list[dict]:
             like = " OR ".join(["content LIKE ?"] * len(terms))
             params: list[Any] = [f"%{t}%" for t in terms]
             params.append(limit)
+            params = params[:-1] + extra_params + [limit]
             rows = _query(
-                f"SELECT * FROM long_term_memories WHERE ({like}) "
+                f"SELECT * FROM long_term_memories WHERE ({like}){extra_sql} "
                 f"ORDER BY importance DESC, last_recalled_at DESC, id DESC LIMIT ?",
                 params,
             )
         else:
+            where = ("WHERE 1=1" + extra_sql) if extra_sql else ""
             rows = _query(
-                "SELECT * FROM long_term_memories "
-                "ORDER BY importance DESC, last_recalled_at DESC, id DESC LIMIT ?",
-                (limit,),
+                f"SELECT * FROM long_term_memories {where} "
+                f"ORDER BY importance DESC, last_recalled_at DESC, id DESC LIMIT ?",
+                extra_params + [limit],
             )
         out = [dict(r) for r in rows]
         ts = _now_ms()
@@ -304,6 +332,49 @@ def recall_long_term(query_text: str = "", limit: int = 6) -> list[dict]:
     except Exception:  # noqa: BLE001
         logger.exception("召回长期记忆失败")
         return []
+
+
+def update_long_term(mem_id: int, content: str = "", category: str = "", importance: Any = None) -> bool:
+    """更新一条长期记忆（内容/分类/重要度）。小伴的需求：记忆要能更新，不只增不减。"""
+    sets, params = [], []
+    if content.strip():
+        sets.append("content=?")
+        params.append(content.strip()[:500])
+    if category.strip():
+        sets.append("category=?")
+        params.append(category.strip()[:32])
+    if importance is not None:
+        sets.append("importance=?")
+        params.append(_normalize_importance(importance))
+    if not sets:
+        return False
+    params.append(int(mem_id))
+    try:
+        cur = _write(f"UPDATE long_term_memories SET {', '.join(sets)} WHERE id=?", params)
+        return cur.rowcount > 0
+    except Exception:  # noqa: BLE001
+        logger.exception("更新长期记忆失败")
+        return False
+
+
+def decay_long_term(older_than_days: int = 60, min_importance: float = 0.3) -> int:
+    """遗忘：把很久没被想起、又不重要的记忆降权（不硬删）。
+
+    小伴的需求：「记住的东西要能更新和遗忘，别只增不减」。
+    """
+    import time as _time
+
+    cutoff = int((_time.time() - older_than_days * 86400) * 1000)
+    try:
+        cur = _write(
+            "UPDATE long_term_memories SET importance = MAX(0.05, importance * 0.7) "
+            "WHERE importance > ? AND last_recalled_at < ? AND created_at < ?",
+            (min_importance, cutoff, cutoff),
+        )
+        return cur.rowcount
+    except Exception:  # noqa: BLE001
+        logger.exception("记忆降权失败")
+        return 0
 
 
 def forget_long_term(mem_id: int) -> bool:

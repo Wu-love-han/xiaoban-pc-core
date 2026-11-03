@@ -50,8 +50,10 @@ def _pc_state() -> str:
         fg = D.foreground_title()
         extra = f"，当前前台是「{fg}」" if fg else ""
         return (f"电脑端：**能操作真实鼠标键盘**（屏幕 {w}x{h}{extra}）。"
-                "用 pc.screen 截图看界面、pc.click 点坐标、pc.type 往窗口打字、"
-                "pc.hotkey 按快捷键、pc.windows 看开了哪些窗口。")
+                "用 pc.screen 截图、**pc.look 直接看懂画面内容**、pc.click 点坐标、"
+                "pc.type 往窗口打字、pc.hotkey 按快捷键、pc.windows 看开了哪些窗口、"
+                "pc.context 看用户在干什么。"
+                "另外 **pc.self_update 能读改你自己的代码和配置**（带备份+语法校验+自动回滚）。")
     except Exception:  # noqa: BLE001
         return ""
 

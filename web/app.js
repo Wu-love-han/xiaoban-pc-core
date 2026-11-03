@@ -1352,6 +1352,32 @@
     bind();
     autosize();
 
+    // ---- 主动消息：小伴自己开口（每 20 秒拉一次）----
+    var proactiveTimer = null;
+    function pollProactive() {
+      // 正在流式输出时先跳过，别打断当前回复
+      if (S.curBubble) return;
+      api('GET', '/api/proactive/pending?limit=5').then(function (res) {
+        if (!res || !res.ok || !res.items || !res.items.length) return;
+        res.items.forEach(function (m) {
+          var b = botBubble();
+          b.textContent = m.text;
+          b.classList.add('proactive');
+          if (m.kind === 'alert') b.classList.add('alert');
+          api('POST', '/api/proactive/ack', { id: m.id }).catch(function () {});
+        });
+        S.curBubble = null;
+        scrollBottom(true);
+      }).catch(function () { /* 忽略 */ });
+    }
+    if (!IS_MOCK) {
+      pollProactive();
+      proactiveTimer = setInterval(pollProactive, 20000);
+      window.addEventListener('beforeunload', function () {
+        if (proactiveTimer) clearInterval(proactiveTimer);
+      });
+    }
+
     // 移动端：输入框提示改成触摸友好文案
     try {
       var isMobile = window.matchMedia('(max-width: 720px)').matches;

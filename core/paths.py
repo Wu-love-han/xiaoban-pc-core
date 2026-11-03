@@ -78,10 +78,27 @@ DEFAULT_CONFIG: dict = {
     },
     "tools": {
         "enabled": [],          # 空 = 全部启用
+        # 只读命令白名单（小伴反馈：太窄了，很多只读命令跑不了，已放宽）
         "shell_whitelist": [
-            "dir", "ls", "type", "echo", "whoami", "hostname",
-            "tasklist", "ipconfig", "systeminfo", "ver", "date", "time",
-            "ollama list", "git status", "nvidia-smi", "python --version",
+            # 目录 / 文件查看
+            "dir", "ls", "type", "cat", "more", "head", "tail", "where", "which",
+            "tree", "find", "grep", "findstr", "wc", "sort", "uniq",
+            # 系统信息
+            "whoami", "hostname", "systeminfo", "ver", "date", "time", "set",
+            "ipconfig", "ifconfig", "ping", "nslookup", "netstat", "route", "arp",
+            "wmic", "sc query", "net use", "net view", "net share",
+            "tasklist", "tasklist /", "driverquery", "getmac", "vol", "chkdsk",
+            "powercfg /getactivescheme", "powercfg /list",
+            "w32tm /query", "fsutil fsinfo", "reg query", "reg export",
+            # 开发工具
+            "python --version", "python -V", "pip list", "pip show", "node -v",
+            "npm -v", "git status", "git log", "git diff", "git branch",
+            "git remote", "git show", "git rev-parse", "git config --get",
+            "docker ps", "docker images", "docker version",
+            "ollama list", "ollama ps", "ollama show",
+            "nvidia-smi", "nvcc --version",
+            # 其他
+            "echo", "cls", "color", "title", "typeperf", "systeminfo",
         ],
     },
     "search": {

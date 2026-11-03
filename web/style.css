@@ -862,3 +862,13 @@ code { font-family: var(--mono); font-size: 0.92em; }
 @media (display-mode: standalone) {
   .topbar { padding-top: env(safe-area-inset-top, 0); }
 }
+
+/* 主动消息气泡：和普通回复区分开 */
+.bubble.proactive {
+  border-left: 2px solid #4ec9b0;
+  background: rgba(78, 201, 176, 0.06);
+}
+.bubble.proactive.alert {
+  border-left-color: #e0a355;
+  background: rgba(224, 163, 85, 0.08);
+}

@@ -44,7 +44,7 @@ from core.paths import LOGS_DIR, WEB_DIR, ensure_dirs
 from core.toolbase import load_all
 from core import plugins as plugin_mod
 
-from .routes import app_api, approvals, autopilot_api, capabilities_api, chat, dashboard_api, github_api_route, grandlog_api, live_api, memory_api, plugins_api, sessions, sync_api, system, tools_api
+from .routes import app_api, approvals, autopilot_api, capabilities_api, chat, dashboard_api, github_api_route, grandlog_api, live_api, memory_api, plugins_api, proactive_api, sessions, sync_api, system, tools_api
 
 logger = logging.getLogger("pccore.server")
 
@@ -146,6 +146,14 @@ async def lifespan(app: FastAPI):
         daily_review.ensure_scheduled()
     except Exception:  # noqa: BLE001
         logger.exception("每日复盘注册失败")
+
+    try:
+        from core import proactive  # noqa: PLC0415
+
+        proactive.init()
+        logger.info("主动消息通道就绪")
+    except Exception:  # noqa: BLE001
+        logger.exception("主动消息初始化失败")
 
     try:
         from core import sync_hub  # noqa: PLC0415
@@ -270,6 +278,7 @@ def create_app() -> FastAPI:
     app.include_router(sync_api.router)           # /api/sync（三端同步）
     app.include_router(app_api.router)            # /api/app（手机 App 版本/下载）
     app.include_router(dashboard_api.router)      # /api/dashboard（后台看板）
+    app.include_router(proactive_api.router)      # /api/proactive（主动消息）
     app.include_router(live_api.router)          # /api/live（直播+形象）
     app.include_router(approvals.router)       # /api/approvals...
 
