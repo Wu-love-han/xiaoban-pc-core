@@ -331,6 +331,144 @@ async def chat_send(body: ChatIn, pc_console: str | None = Cookie(default=None))
         return {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
 
 
+# ---------------------------------------------------------------- 消息中心（各端上报）
+
+@app.get("/api/inbox")
+async def inbox(limit: int = 30, pc_console: str | None = Cookie(default=None)):
+    """所有端上报的消息：主动提醒、资源告警、手机/机器人报告、待确认。"""
+    _guard(pc_console)
+    items: list[dict] = []
+    try:
+        for m in proactive.recent(limit):
+            items.append({
+                "id": "p" + str(m.get("id")),
+                "kind": m.get("kind") or "note",
+                "source": m.get("source") or "",
+                "text": m.get("text") or "",
+                "priority": m.get("priority") or 1,
+                "ts": m.get("ts_ms") or 0,
+                "acked": bool(m.get("ack_ms")),
+                "type": "message",
+            })
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        from core import consent  # noqa: PLC0415
+
+        for c in consent.pending():
+            items.append({
+                "id": "c" + str(c.get("id")),
+                "kind": "consent",
+                "source": "consent",
+                "text": f"{c.get('target')}：{(c.get('detail') or '')[:200]}",
+                "priority": 3,
+                "ts": c.get("created_ms") or 0,
+                "consent_id": c.get("id"),
+                "type": "consent",
+            })
+    except Exception:  # noqa: BLE001
+        pass
+    items.sort(key=lambda x: x.get("ts") or 0, reverse=True)
+    return {"ok": True, "items": items[:limit], "count": len(items)}
+
+
+class InboxSendIn(BaseModel):
+    text: str
+    to: str = "all"
+
+
+@app.post("/api/inbox/send")
+async def inbox_send(body: InboxSendIn, pc_console: str | None = Cookie(default=None)):
+    """从控制台给某个端下指令 / 回话。"""
+    _guard(pc_console)
+    text = (body.text or "").strip()
+    if not text:
+        return {"ok": False, "error": "空消息"}
+    try:
+        from core import sync_hub  # noqa: PLC0415
+
+        target = (body.to or "all").strip()
+        if target == "all":
+            # 广播：写进主动消息 + 三端日志
+            proactive.push(text, kind="notice", source="console", priority=2)
+            sync_hub.log("console", "command", text[:200])
+            return {"ok": True, "sent_to": "all"}
+        # 指定端：走指令队列
+        cmd = sync_hub.push_command("console", target, text)
+        return {"ok": True, "sent_to": target, "command": cmd}
+    except Exception as exc:  # noqa: BLE001
+        return {"ok": False, "error": str(exc)}
+
+
+class AckIn(BaseModel):
+    id: int
+
+
+@app.post("/api/inbox/ack")
+async def inbox_ack(body: AckIn, pc_console: str | None = Cookie(default=None)):
+    _guard(pc_console)
+    try:
+        return {"ok": proactive.ack(body.id)}
+    except Exception as exc:  # noqa: BLE001
+        return {"ok": False, "error": str(exc)}
+
+
+# ---------------------------------------------------------------- 文档传输
+
+CONSOLE_DOCS = ROOT / "data" / "console_docs"
+
+
+@app.get("/api/docs")
+async def docs_list(pc_console: str | None = Cookie(default=None)):
+    _guard(pc_console)
+    CONSOLE_DOCS.mkdir(parents=True, exist_ok=True)
+    items = []
+    for f in sorted(CONSOLE_DOCS.iterdir(), key=lambda x: -x.stat().st_mtime):
+        if f.is_file():
+            items.append({
+                "name": f.name,
+                "size": f.stat().st_size,
+                "mtime": int(f.stat().st_mtime * 1000),
+            })
+    return {"ok": True, "items": items, "dir": str(CONSOLE_DOCS)}
+
+
+@app.post("/api/docs/upload")
+async def docs_upload(request: Request, pc_console: str | None = Cookie(default=None)):
+    """接收上传的文档（multipart/form-data）。"""
+    _guard(pc_console)
+    CONSOLE_DOCS.mkdir(parents=True, exist_ok=True)
+    try:
+        form = await request.form()
+        saved = []
+        for key in form.keys():
+            up = form[key]
+            if hasattr(up, "filename") and up.filename:
+                safe = "".join(c for c in up.filename if c not in '\\/:*?"<>|')[:120]
+                if not safe:
+                    continue
+                dest = CONSOLE_DOCS / safe
+                content = await up.read()
+                dest.write_bytes(content)
+                saved.append({"name": safe, "size": len(content)})
+        return {"ok": True, "saved": saved}
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("上传失败")
+        return {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
+
+
+@app.get("/api/docs/download")
+async def docs_download(name: str, pc_console: str | None = Cookie(default=None)):
+    _guard(pc_console)
+    from fastapi.responses import FileResponse  # noqa: PLC0415
+
+    safe = "".join(c for c in name if c not in '\\/:*?"<>|')
+    f = CONSOLE_DOCS / safe
+    if not f.exists():
+        return JSONResponse({"ok": False, "error": "没有这个文件"}, status_code=404)
+    return FileResponse(str(f), filename=safe)
+
+
 # ---------------------------------------------------------------- 确认
 
 class DecideIn(BaseModel):

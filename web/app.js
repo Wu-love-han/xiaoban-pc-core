@@ -1383,6 +1383,67 @@
     if (dash) dash.addEventListener('click', function (e) { if (e.target === dash) dash.hidden = true; });
     if (dom.btnGhSearch) dom.btnGhSearch.addEventListener('click', searchGithub);
 
+    // ---- 供应商 / 模型选择 ----
+    var provSel = $('cfg-provider-select');
+    var modelSel = $('cfg-model-select');
+    var modelInput = $('cfg-model');
+
+    function fillModels(provider) {
+      if (!modelSel) return;
+      modelSel.innerHTML = '<option value="">（读取中…）</option>';
+      api('GET', '/api/models?provider=' + encodeURIComponent(provider || ''))
+        .then(function (res) {
+          if (!res || !res.ok) {
+            modelSel.innerHTML = '<option value="">读不到模型列表</option>';
+            return;
+          }
+          var opts = ['<option value="">（选一个）</option>'];
+          (res.models || []).forEach(function (m) {
+            opts.push('<option value="' + escapeHtml(m.id) + '">' +
+                      escapeHtml(m.id) + (m.vision ? ' 👁' : '') + '</option>');
+          });
+          modelSel.innerHTML = opts.join('');
+          if (res.current) {
+            modelSel.value = res.current;
+            if (modelSel.value !== res.current && modelInput) modelInput.value = res.current;
+          }
+        })
+        .catch(function () {
+          modelSel.innerHTML = '<option value="">读不到模型列表</option>';
+        });
+    }
+
+    function loadProviders() {
+      if (!provSel) return;
+      api('GET', '/api/models')
+        .then(function (res) {
+          if (!res || !res.ok) return;
+          var opts = [];
+          (res.providers || []).forEach(function (p) {
+            opts.push('<option value="' + escapeHtml(p) + '">' + escapeHtml(p) + '</option>');
+          });
+          provSel.innerHTML = opts.join('');
+          if (res.provider) provSel.value = res.provider;
+          fillModels(res.provider);
+        })
+        .catch(function () { /* 忽略 */ });
+    }
+
+    if (provSel) {
+      provSel.addEventListener('change', function () { fillModels(provSel.value); });
+      loadProviders();
+    }
+    if (modelSel) {
+      modelSel.addEventListener('change', function () {
+        if (modelSel.value && modelInput) modelInput.value = modelSel.value;
+      });
+    }
+    if ($('btn-refresh-models')) {
+      $('btn-refresh-models').addEventListener('click', function () {
+        loadProviders();
+      });
+    }
+
     // ---- 语音模式 ----
     var VOICE_KEY = 'pc_voice_out';
     var voiceOut = false;

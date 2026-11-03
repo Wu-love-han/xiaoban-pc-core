@@ -132,14 +132,18 @@
 
   <div class="drawer-body">
     <label class="field">
+      <span class="field-label">供应商 <button class="link-btn" id="btn-refresh-models" type="button" style="float:right;font-size:11px;background:none;border:none;color:#4ec9b0;cursor:pointer">刷新模型</button></span>
+      <select id="cfg-provider-select" style="width:100%">
+        <option value="">（读取中…）</option>
+      </select>
+    </label>
+
+    <label class="field">
       <span class="field-label">模型</span>
-      <input id="cfg-model" list="model-options" placeholder="任意模型名，例如 deepseek/deepseek-flash" spellcheck="false">
-      <datalist id="model-options">
-        <option value="deepseek/deepseek-flash"></option>
-        <option value="deepseek/deepseek-chat"></option>
-        <option value="qwen2.5:7b"></option>
-        <option value="gpt-4o-mini"></option>
-      </datalist>
+      <select id="cfg-model-select" style="width:100%;margin-bottom:6px">
+        <option value="">（先选供应商）</option>
+      </select>
+      <input id="cfg-model" placeholder="也可以直接手打模型名" spellcheck="false">
     </label>
 
     <div class="field">

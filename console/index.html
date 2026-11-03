@@ -69,14 +69,18 @@
       <div class="tab" data-t="tasks">任务</div>
       <div class="tab" data-t="memory">记忆</div>
       <div class="tab" data-t="persona">人格</div>
+      <div class="tab" data-t="inbox">消息</div>
       <div class="tab" data-t="chat">对话</div>
+      <div class="tab" data-t="docs">文档</div>
     </div>
 
     <div id="tab-overview"></div>
     <div id="tab-tasks" class="hidden"></div>
     <div id="tab-memory" class="hidden"></div>
     <div id="tab-persona" class="hidden"></div>
+    <div id="tab-inbox" class="hidden"></div>
     <div id="tab-chat" class="hidden"></div>
+    <div id="tab-docs" class="hidden"></div>
   </div>
 
   <div class="foot hidden" id="chatFoot">
@@ -151,15 +155,19 @@ function switchTab(name) {
   document.querySelectorAll('.tab').forEach(function (t) {
     t.classList.toggle('on', t.getAttribute('data-t') === name);
   });
-  ['overview','tasks','memory','persona','chat'].forEach(function (n) {
+  ['overview','tasks','memory','persona','inbox','chat','docs'].forEach(function (n) {
     $('tab-' + n).classList.toggle('hidden', n !== name);
   });
-  $('chatFoot').classList.toggle('hidden', name !== 'chat');
+  $('chatFoot').classList.toggle('hidden', name !== 'chat' && name !== 'inbox');
+  var ci = $('chatInput');
+  if (ci) ci.placeholder = name === 'inbox' ? '给它们下指令 / 回话…' : '跟小伴说点什么…';
   if (name === 'overview') loadOverview();
   if (name === 'tasks') loadTasks();
   if (name === 'memory') loadMemory();
   if (name === 'persona') loadPersona();
   if (name === 'chat') loadChat();
+  if (name === 'inbox') loadInbox();
+  if (name === 'docs') loadDocs();
 }
 
 // ---------------- 概览
@@ -313,6 +321,77 @@ function loadPersona() {
   }).catch(function () { /* 忽略 */ });
 }
 
+// ---------------- 消息中心
+function loadInbox() {
+  api('GET', '/api/inbox?limit=40').then(function (d) {
+    var items = (d && d.items) || [];
+    var h = ['<div class="card"><div class="card-t">各端消息（' + items.length + '）</div>'];
+    h.push('<div class="m" style="margin-bottom:10px">手机 AI、机器人 AI 有事会往这里报；你在这里回的话会广播给三端。</div>');
+    if (!items.length) h.push('<div class="m">还没有消息</div>');
+    items.forEach(function (m) {
+      var border = m.priority >= 3 ? 'border-color:#5a2a2a;background:rgba(224,85,85,.06)'
+        : (m.kind === 'alert' ? 'border-color:#3a3222;background:rgba(224,163,85,.06)' : '');
+      h.push('<div class="item" style="' + border + '">');
+      h.push('<div class="t">' + esc(m.text.slice(0, 200)) + '</div>');
+      h.push('<div class="m">来源 ' + esc(m.source || '?') + ' · ' + esc(m.kind || '') +
+             (m.acked ? ' · 已读' : '') + '</div>');
+      if (m.type === 'consent') {
+        h.push('<div class="row" style="margin-top:8px">');
+        h.push('<button class="btn p" data-cid="' + esc(m.consent_id) + '" data-act="approve">同意</button>');
+        h.push('<button class="btn d" data-cid="' + esc(m.consent_id) + '" data-act="deny">拒绝</button>');
+        h.push('</div>');
+      }
+      h.push('</div>');
+    });
+    h.push('</div>');
+    $('tab-inbox').innerHTML = h.join('');
+    $('tab-inbox').querySelectorAll('button[data-cid]').forEach(function (b) {
+      b.onclick = function () {
+        b.disabled = true;
+        api('POST', '/api/consent/' + b.getAttribute('data-act'), { id: b.getAttribute('data-cid') })
+          .then(loadInbox).catch(function (e) { alert(e.message); b.disabled = false; });
+      };
+    });
+  }).catch(function () { /* 忽略 */ });
+}
+
+// ---------------- 文档
+function loadDocs() {
+  api('GET', '/api/docs').then(function (d) {
+    var items = (d && d.items) || [];
+    var h = ['<div class="card"><div class="card-t">文档（' + items.length + '）</div>'];
+    h.push('<div class="m" style="margin-bottom:10px">可以往这里传文件，也能下载。存到 ' + esc((d && d.dir) || '') + '</div>');
+    h.push('<div class="row" style="margin-bottom:12px">');
+    h.push('<input type="file" id="docFile" style="padding:8px">');
+    h.push('<button class="btn p" id="docUpload">上传</button>');
+    h.push('</div>');
+    if (!items.length) h.push('<div class="m">还没有文件</div>');
+    items.forEach(function (f) {
+      h.push('<div class="item"><div class="t">' + esc(f.name) + '</div>');
+      h.push('<div class="m">' + (f.size / 1024).toFixed(1) + ' KB</div>');
+      h.push('<div class="row" style="margin-top:8px">');
+      h.push('<a class="btn" href="/api/docs/download?name=' + encodeURIComponent(f.name) + '">下载</a>');
+      h.push('</div></div>');
+    });
+    h.push('</div>');
+    $('tab-docs').innerHTML = h.join('');
+    $('docUpload').onclick = function () {
+      var f = $('docFile').files[0];
+      if (!f) { alert('先选个文件'); return; }
+      var fd = new FormData();
+      fd.append('file', f);
+      $('docUpload').disabled = true;
+      fetch('/api/docs/upload', { method: 'POST', body: fd })
+        .then(function (r) { return r.json(); })
+        .then(function (res) {
+          if (!res.ok) alert('上传失败：' + (res.error || ''));
+          loadDocs();
+        })
+        .catch(function (e) { alert(e.message); $('docUpload').disabled = false; });
+    };
+  }).catch(function () { /* 忽略 */ });
+}
+
 // ---------------- 对话
 function loadChat() {
   api('GET', '/api/chat').then(function (d) {
@@ -335,6 +414,12 @@ $('btnChatSend').onclick = function () {
   var v = ($('chatInput').value || '').trim();
   if (!v) return;
   $('chatInput').value = '';
+  if (CUR === 'inbox') {
+    api('POST', '/api/inbox/send', { text: v, to: 'all' }).then(function () {
+      loadInbox();
+    }).catch(function (e) { alert(e.message); });
+    return;
+  }
   $('btnChatSend').disabled = true;
   var log = $('chatLog');
   if (log) {

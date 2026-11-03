@@ -220,3 +220,52 @@ async def patch_config(body: ConfigIn | None = None):
             "X-Config-Note": _hdr("；".join(notes)),
         },
     )
+
+
+# ---------------------------------------------------------------- 模型列表
+
+@router.get("/models")
+async def list_models(provider: str = ""):
+    """列出某个 provider 有哪些模型可选（前端下拉框用）。"""
+    import json as _json  # noqa: PLC0415
+    import urllib.request  # noqa: PLC0415
+
+    cfg = cfg_mod.load()
+    bcfg = cfg.get("brain") or {}
+    providers = cfg.get("providers") or {}
+
+    names = [k for k in providers.keys() if k != "phone"]
+    pname = (provider or bcfg.get("provider") or "gateway").strip()
+    conf = providers.get(pname) or {}
+    base_url = str(conf.get("base_url") or "").rstrip("/")
+    api_key = str(conf.get("api_key") or "")
+
+    out: dict = {"ok": True, "providers": names, "provider": pname, "models": [], "current": bcfg.get("model")}
+    if not base_url:
+        out["error"] = f"provider「{pname}」没配 base_url"
+        return out
+
+    try:
+        req = urllib.request.Request(base_url + "/models")
+        if api_key:
+            req.add_header("Authorization", f"Bearer {api_key}")
+        with urllib.request.urlopen(req, timeout=15) as r:
+            data = _json.loads(r.read().decode("utf-8", "replace"))
+        items = data.get("data") or []
+        models = []
+        for m in items:
+            mid = m.get("id") or ""
+            if not mid:
+                continue
+            mods = (m.get("modalities") or {}).get("input") or []
+            models.append({
+                "id": mid,
+                "name": m.get("display_name") or mid,
+                "vision": "image" in mods,
+            })
+        out["models"] = models[:200]
+        out["count"] = len(models)
+    except Exception as exc:  # noqa: BLE001
+        out["ok"] = False
+        out["error"] = f"{type(exc).__name__}: {exc}"
+    return out
