@@ -105,7 +105,10 @@ def _replace_region(text: str, start_mark: str, end_mark: str, new_body: str) ->
     """替换两个标记之间的内容；标记不存在就追加到文件末尾。"""
     if start_mark in text and end_mark in text:
         pattern = re.compile(re.escape(start_mark) + r".*?" + re.escape(end_mark), re.S)
-        return pattern.sub(f"{start_mark}\n{new_body}\n{end_mark}", text, count=1)
+        # 必须用 lambda：new_body 里可能有 Windows 路径（E:\WH\...），
+        # 直接当替换模板会被当成正则转义，报 "bad escape \W"（实测踩过）
+        replacement = f"{start_mark}\n{new_body}\n{end_mark}"
+        return pattern.sub(lambda _m: replacement, text, count=1)
     return text + f"\n{start_mark}\n{new_body}\n{end_mark}\n"
 
 
