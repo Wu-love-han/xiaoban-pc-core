@@ -103,16 +103,44 @@ def _parse_bounds(b: str):
     return None
 
 
+# App 是否可用（避免每次都等超时）
+_app_probe = {"ok": False, "at": 0.0}
+_APP_PROBE_TTL = 20.0  # 秒
+
+
+def _app_usable() -> bool:
+    now = _time.time()
+    if now - _app_probe["at"] < _APP_PROBE_TTL:
+        return _app_probe["ok"]
+    ok = app_ready()
+    _app_probe["at"] = now
+    _app_probe["ok"] = ok
+    return ok
+
+
 def ui_tree(force: bool = False) -> tuple[bool, list[dict] | str]:
     """拿当前界面的结构树（文字 + 坐标 + 可点击），带 1.5 秒缓存。
 
-    比截图快得多：截图要传 100KB+ 图片再让模型看图，
-    结构树只是一串文字，模型直接读。
+    优先走手机 App 的无障碍服务（约 0.4 秒），
+    拿不到才回落 uiautomator dump（约 2.3 秒）。
+    比截图快得多：截图要传 100KB+ 图片再让模型看图。
     """
     with _ui_lock:
         if not force and _time.time() - _ui_cache["at"] < UI_CACHE_TTL and _ui_cache["elements"]:
             return True, _ui_cache["elements"]
 
+    # ---- 快路径：手机 App 无障碍服务 ----
+    if _app_usable():
+        ok_app, data_app = app_tree()
+        if ok_app and isinstance(data_app, list) and data_app:
+            with _ui_lock:
+                _ui_cache.update({"at": _time.time(), "xml": "", "elements": data_app})
+            return True, data_app
+        # App 掉线了，标记一下，下次直接走慢路径
+        if not ok_app:
+            _app_probe["ok"] = False
+
+    # ---- 慢路径：uiautomator dump ----
     ok, msg = device_ready()
     if not ok:
         return False, msg
@@ -181,3 +209,137 @@ def find_element(keyword: str) -> dict | None:
         if kw in e["text"].lower() or kw in e["desc"].lower() or kw in e["id"].lower():
             return e
     return None
+
+
+# ================================================================
+# 手机 App 本地能力服务（v2 App 内置，端口 9123）
+# 比 uiautomator dump 快 6 倍，而且能直接点节点、直接写输入框
+# ================================================================
+
+_app_base_cache: dict = {"url": "", "at": 0.0}
+
+
+def _phone_conf() -> dict:
+    try:
+        from core import config as cfg_mod  # noqa: PLC0415
+
+        return (cfg_mod.load().get("providers") or {}).get("phone") or {}
+    except Exception:  # noqa: BLE001
+        return {}
+
+
+def _app_candidates() -> list[str]:
+    conf = _phone_conf()
+    urls = conf.get("cap_urls") or []
+    if urls:
+        return [str(u).rstrip("/") for u in urls]
+    return ["http://100.115.152.111:9123", "http://172.30.188.163:9123"]
+
+
+def _app_token() -> str:
+    return str(_phone_conf().get("token") or "")
+
+
+def _app_request(path: str, method: str = "GET", body: dict | None = None,
+                 timeout: float | None = None) -> tuple[bool, dict]:
+    """请求手机 App 的本地服务，自动在候选地址里找一个能用的。"""
+    import json as _json
+    import urllib.error
+    import urllib.request
+
+    conf = _phone_conf()
+    if timeout is None:
+        timeout = float(conf.get("timeout_s") or 8)
+    token = _app_token()
+
+    # 上次成功的地址优先
+    bases = list(_app_candidates())
+    last = _app_base_cache.get("url")
+    if last and last in bases:
+        bases.remove(last)
+        bases.insert(0, last)
+
+    payload = _json.dumps(body or {}, ensure_ascii=False).encode("utf-8") if method == "POST" else None
+    last_err = ""
+
+    for base in bases:
+        try:
+            req = urllib.request.Request(base + path, data=payload, method=method)
+            req.add_header("Content-Type", "application/json")
+            if token:
+                req.add_header("X-PC-Token", token)
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                data = _json.loads(resp.read().decode("utf-8", "replace"))
+            _app_base_cache["url"] = base
+            return True, data
+        except urllib.error.HTTPError as exc:
+            last_err = f"HTTP {exc.code}"
+        except Exception as exc:  # noqa: BLE001
+            last_err = f"{type(exc).__name__}: {exc}"
+    return False, {"ok": False, "error": last_err or "连不上手机 App"}
+
+
+def app_available() -> bool:
+    """手机 App 的本地服务在不在。"""
+    ok, data = _app_request("/ping")
+    return bool(ok and data.get("ok"))
+
+
+def app_ready() -> bool:
+    """App 在，且无障碍服务已开。"""
+    ok, data = _app_request("/ping")
+    return bool(ok and data.get("ok") and data.get("accessibility"))
+
+
+def app_tree(limit: int = 200) -> tuple[bool, list[dict] | str]:
+    """从 App 拿实时界面树（快）。返回和 ui_tree 一样结构的元素列表。"""
+    ok, data = _app_request(f"/tree?limit={int(limit)}")
+    if not ok:
+        return False, str(data.get("error") or "连不上手机 App")
+    if not data.get("ok"):
+        return False, str(data.get("error") or "App 返回失败")
+
+    elements = []
+    for e in data.get("elements") or []:
+        center = e.get("center") or [0, 0]
+        elements.append({
+            "text": (e.get("text") or "")[:60],
+            "desc": (e.get("desc") or "")[:60],
+            "id": (e.get("id") or "")[:40],
+            "class": (e.get("cls") or "")[:24],
+            "center": [int(center[0]), int(center[1])],
+            "clickable": bool(e.get("clickable")),
+            "editable": bool(e.get("editable")),
+        })
+    return True, elements
+
+
+def app_click_text(text: str) -> tuple[bool, str]:
+    # 点击可能触发新页面启动，给宽一点
+    ok, data = _app_request("/click", method="POST", body={"text": text}, timeout=20)
+    if not ok:
+        return False, str(data.get("error") or "连不上手机 App")
+    if data.get("ok"):
+        return True, f"点了「{text}」"
+    return False, str(data.get("error") or "点击失败")
+
+
+def app_click_xy(x: int, y: int) -> tuple[bool, str]:
+    ok, data = _app_request("/click", method="POST", body={"x": int(x), "y": int(y)})
+    if not ok:
+        return False, str(data.get("error") or "连不上手机 App")
+    return (True, f"点了 ({x},{y})") if data.get("ok") else (False, str(data.get("error") or "点击失败"))
+
+
+def app_type(text: str) -> tuple[bool, str]:
+    ok, data = _app_request("/type", method="POST", body={"text": text})
+    if not ok:
+        return False, str(data.get("error") or "连不上手机 App")
+    return (True, f"写入了 {data.get('count', len(text))} 个字") if data.get("ok") else (False, str(data.get("error") or "写入失败"))
+
+
+def app_key(name: str) -> tuple[bool, str]:
+    ok, data = _app_request("/key", method="POST", body={"name": name})
+    if not ok:
+        return False, str(data.get("error") or "连不上手机 App")
+    return (True, f"按了 {name}") if data.get("ok") else (False, str(data.get("error") or "按键失败"))

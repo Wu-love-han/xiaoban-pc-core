@@ -44,7 +44,7 @@ from core.paths import LOGS_DIR, WEB_DIR, ensure_dirs
 from core.toolbase import load_all
 from core import plugins as plugin_mod
 
-from .routes import approvals, autopilot_api, capabilities_api, chat, github_api_route, grandlog_api, live_api, memory_api, plugins_api, sessions, sync_api, system, tools_api
+from .routes import app_api, approvals, autopilot_api, capabilities_api, chat, github_api_route, grandlog_api, live_api, memory_api, plugins_api, sessions, sync_api, system, tools_api
 
 logger = logging.getLogger("pccore.server")
 
@@ -268,6 +268,7 @@ def create_app() -> FastAPI:
     app.include_router(grandlog_api.router)       # /api/grandlog（总志）
     app.include_router(github_api_route.router)   # /api/github（GitHub 连接）
     app.include_router(sync_api.router)           # /api/sync（三端同步）
+    app.include_router(app_api.router)            # /api/app（手机 App 版本/下载）
     app.include_router(live_api.router)          # /api/live（直播+形象）
     app.include_router(approvals.router)       # /api/approvals...
 

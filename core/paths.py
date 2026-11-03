@@ -58,6 +58,16 @@ DEFAULT_CONFIG: dict = {
             "timeout_s": 300,
             "num_ctx": 8192,
         },
+        # 手机 App 本地能力服务（v2 App 内置，端口 9123）
+        # 优先 Tailscale（异地也能用），回落局域网
+        "phone": {
+            "cap_urls": [
+                "http://100.115.152.111:9123",
+                "http://172.30.188.163:9123",
+            ],
+            "token": "",
+            "timeout_s": 8,
+        },
         # DeepSeek 官方 API：填上 api_key 后，把 brain.provider 改成 "deepseek" 即可
         # 申请地址 https://platform.deepseek.com/api_keys
         "deepseek": {
