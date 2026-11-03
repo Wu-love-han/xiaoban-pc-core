@@ -39,6 +39,16 @@ SESSION_TTL = 12 * 3600
 
 app = FastAPI(title="小伴控制台", docs_url=None, redoc_url=None)
 
+# 控制台也要加载工具，否则这里的 AI 一个工具都调不了（只会瞎编，实测踩过）
+try:
+    from core.toolbase import load_all, registry  # noqa: E402
+
+    load_all("tools")
+    db.init()
+    logger.info("控制台工具加载完成：%s 个", len(registry.schemas()))
+except Exception:  # noqa: BLE001
+    logger.exception("控制台工具加载失败")
+
 
 # ---------------------------------------------------------------- PIN
 

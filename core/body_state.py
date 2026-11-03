@@ -47,9 +47,9 @@ def _pc_state() -> str:
         from tools import _desktop_common as D  # noqa: PLC0415
 
         w, h = D.screen_size()
-        fg = D.foreground_title()
-        extra = f"，当前前台是「{fg}」" if fg else ""
-        return (f"电脑端：**能操作真实鼠标键盘**（屏幕 {w}x{h}{extra}）。"
+        # 故意不写「当前前台是什么」：写了模型就会假装知道，
+        # 不去调 pc.context / pc.look 真看（实测踩过）。
+        return (f"电脑端：**能操作真实鼠标键盘**（屏幕 {w}x{h}）。"
                 "用 pc.screen 截图、**pc.look 直接看懂画面内容**、pc.click 点坐标、"
                 "pc.type 往窗口打字、pc.hotkey 按快捷键、pc.windows 看开了哪些窗口、"
                 "pc.context 看用户在干什么。"
