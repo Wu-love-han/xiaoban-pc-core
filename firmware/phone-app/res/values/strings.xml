@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">小伴</string>
+    <string name="acc_desc">让小伴能读取屏幕上的文字和按钮位置，帮你点、帮你打字。不读取密码框内容。</string>
+    <string name="acc_label">小伴 · 界面操作</string>
+</resources>
