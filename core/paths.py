@@ -13,7 +13,13 @@ ROOT: Path = Path(__file__).resolve().parent.parent
 
 DOCS = ROOT / "docs"
 CONFIG_DIR = ROOT / "config"
-DATA_DIR = ROOT / "data"
+# 数据目录。
+# 2026-11-04：E:\WH\pc-core\data 目录索引损坏（exFAT），
+# 系统锁住改不动，所以改到 D 盘。修好 E 盘后可以改回来。
+import os as _os
+
+_data_override = _os.environ.get("PCORE_DATA_DIR", "").strip()
+DATA_DIR = Path(_data_override) if _data_override else Path(r"D:\xiaoban-data")
 LOGS_DIR = ROOT / "logs"
 WORKSPACE = ROOT / "workspace"
 TOOLS_DIR = ROOT / "tools"
