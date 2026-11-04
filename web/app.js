@@ -1599,6 +1599,44 @@
         scrollBottom(true);
       }).catch(function () { /* 忽略 */ });
     }
+    // ---- 实时活动：它在干嘛 ----
+    var actBar = $('activity-bar');
+    var actDot = $('activity-dot');
+    var actText = $('activity-text');
+    var actTime = $('activity-time');
+    var actTimer = null;
+
+    function pollActivity() {
+      if (!actBar) return;
+      api('GET', '/api/activity').then(function (a) {
+        if (!a || !a.ok) return;
+        if (a.busy) {
+          actBar.style.display = 'flex';
+          actDot.style.background = '#e0a355';
+          actDot.style.animation = 'pulse 1s infinite';
+          var hint = a.args_hint ? (' · ' + String(a.args_hint).slice(0, 40)) : '';
+          actText.textContent = '小伴正在：' + (a.title || a.tool) + hint;
+          actTime.textContent = (a.elapsed_ms / 1000).toFixed(1) + 's';
+        } else if (a.last_text && (Date.now() - a.last_text_ms) < 60000) {
+          actBar.style.display = 'flex';
+          actDot.style.background = '#4ec9b0';
+          actDot.style.animation = '';
+          actText.textContent = '小伴刚说：' + String(a.last_text).slice(0, 60);
+          var ago = Math.round((Date.now() - a.last_text_ms) / 1000);
+          actTime.textContent = ago + 's 前';
+        } else {
+          actBar.style.display = 'none';
+        }
+      }).catch(function () { /* 忽略 */ });
+    }
+    if (!IS_MOCK && actBar) {
+      pollActivity();
+      actTimer = setInterval(pollActivity, 2000);
+      window.addEventListener('beforeunload', function () {
+        if (actTimer) clearInterval(actTimer);
+      });
+    }
+
     if (!IS_MOCK) {
       pollProactive();
       proactiveTimer = setInterval(pollProactive, 20000);

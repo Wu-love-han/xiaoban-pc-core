@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import AsyncIterator
 
 from . import config as cfg_mod
+from . import activity
 from . import db, grand_log, memory_engine, persona, procedural, reviewer
 from .paths import WORKSPACE
 from .providers import ProviderEvent, get_provider, parse_args
@@ -396,6 +397,12 @@ async def run_turn(
             all_tool_calls.append(
                 {"call_id": c.call_id, "name": c.name, "args": args, "error": arg_err}
             )
+            try:
+                activity.begin(session_id, c.name,
+                               (spec.title if spec else c.name),
+                               str(args)[:120])
+            except Exception:  # noqa: BLE001
+                pass
             yield (
                 "tool_call",
                 {
@@ -469,6 +476,10 @@ async def run_turn(
                 {"name": c.name, "ok": bool(res.get("ok")), "call_id": c.call_id},
                 session_id,
             )
+            try:
+                activity.end(bool(res.get("ok")), str(res.get("output") or "")[:80])
+            except Exception:  # noqa: BLE001
+                pass
             yield (
                 "tool_result",
                 {
@@ -518,6 +529,10 @@ async def run_turn(
         "rounds": round_no,
         "degraded": bool(degraded),
     }
+    try:
+        activity.say(final_text)
+    except Exception:  # noqa: BLE001
+        pass
     msg_id = db.add_message(
         session_id,
         "assistant",

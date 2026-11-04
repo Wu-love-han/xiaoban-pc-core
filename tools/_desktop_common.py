@@ -154,6 +154,14 @@ def focus_window(hwnd: int) -> bool:
         return False
 
 
+def foreground_hwnd() -> int:
+    """当前前台窗口的句柄。"""
+    try:
+        return int(user32.GetForegroundWindow())
+    except Exception:  # noqa: BLE001
+        return 0
+
+
 def foreground_title() -> str:
     hwnd = user32.GetForegroundWindow()
     n = user32.GetWindowTextLengthW(hwnd)
