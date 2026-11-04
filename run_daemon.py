@@ -53,6 +53,41 @@ def start() -> subprocess.Popen:
     return subprocess.Popen(cmd, cwd=str(ROOT))
 
 
+ADB_CANDIDATES = [
+    r"C:\Users\Wh987\.phonemcp\platform-tools\adb.exe",
+    "adb",
+]
+
+
+def ensure_adb_reverse() -> None:
+    """USB 连着时，让手机能访问电脑的 127.0.0.1（反向端口转发）。
+
+    这样手机 App 用 http://127.0.0.1:8770 就能连上，不依赖 WiFi/Tailscale。
+    """
+    import shutil
+
+    adb = None
+    for c in ADB_CANDIDATES:
+        if c == "adb":
+            adb = shutil.which("adb")
+        elif Path(c).exists():
+            adb = c
+        if adb:
+            break
+    if not adb:
+        return
+    try:
+        dev = subprocess.run([adb, "devices"], capture_output=True, text=True, timeout=15)
+        if "device" not in (dev.stdout or ""):
+            return
+        for port in ("8770", "8771"):
+            subprocess.run([adb, "reverse", f"tcp:{port}", f"tcp:{port}"],
+                           capture_output=True, timeout=15)
+        log("adb reverse 已设置（8770 / 8771）")
+    except Exception as exc:  # noqa: BLE001
+        log(f"adb reverse 失败：{exc}")
+
+
 def start_console() -> subprocess.Popen | None:
     """控制台是独立进程（端口 8771）：AI 的工具够不到它。"""
     script = ROOT / "console" / "server.py"
@@ -72,6 +107,8 @@ def main() -> None:
     log("=== 小伴守护进程启动 ===")
     console = start_console()
     child = start()
+    time.sleep(6)
+    ensure_adb_reverse()
     while True:
         try:
             code = child.wait(timeout=3)
@@ -87,7 +124,8 @@ def main() -> None:
             time.sleep(2)
             child = start()
         except subprocess.TimeoutExpired:
-            # 还活着，继续等
+            # 还活着，继续等；顺便维持 adb reverse（手机拔插后要重设）
+            ensure_adb_reverse()
             continue
         except KeyboardInterrupt:
             log("收到中断，关闭后端")
