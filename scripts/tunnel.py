@@ -86,7 +86,7 @@ def main() -> int:
                 print("  手机/外面任何浏览器打开这个地址，输 PIN 就能进")
                 print(f"  PIN：在 config.json 的 server.console_pin")
                 print()
-                print("  ⚠ 这是公网地址，别人知道 URL 也能试 PIN（已限流：错 5 次锁 10 分钟）")
+                print("  [!] 这是公网地址，别人知道 URL 也能试 PIN（已限流：错 5 次锁 10 分钟）")
                 print("  按 Ctrl+C 停止")
                 print()
             if os.environ.get("TUNNEL_ONCE") and url:

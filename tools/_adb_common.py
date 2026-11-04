@@ -364,3 +364,26 @@ def app_shell(cmd: str, timeout_s: int = 15) -> tuple[bool, str, str]:
     if not ok:
         return False, str(data.get("error") or "连不上手机 App"), ""
     return True, str(data.get("output") or ""), str(data.get("level") or "")
+
+
+# ---------------------------------------------------------------- App 端口（远程可用）
+
+def app_open_app(pkg: str) -> tuple[bool, str]:
+    ok, data = _app_request("/open_app", method="POST", body={"package": pkg}, timeout=20)
+    if not ok:
+        return False, str(data.get("error") or "连不上手机 App")
+    return (True, f"打开了 {pkg}") if data.get("ok") else (False, str(data.get("error") or "打开失败"))
+
+
+def app_foreground() -> tuple[bool, str]:
+    ok, data = _app_request("/foreground")
+    if not ok:
+        return False, str(data.get("error") or "连不上手机 App")
+    return True, str(data.get("package") or "")
+
+
+def app_list_apps() -> tuple[bool, list[dict]]:
+    ok, data = _app_request("/apps", timeout=25)
+    if not ok or not data.get("ok"):
+        return False, []
+    return True, data.get("apps") or []

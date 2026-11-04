@@ -59,12 +59,20 @@ ADB_CANDIDATES = [
 ]
 
 
-def ensure_adb_reverse() -> None:
+_last_reverse = {"at": 0.0, "ok": False}
+
+
+def ensure_adb_reverse(force: bool = False) -> None:
     """USB 连着时，让手机能访问电脑的 127.0.0.1（反向端口转发）。
 
     这样手机 App 用 http://127.0.0.1:8770 就能连上，不依赖 WiFi/Tailscale。
     """
     import shutil
+
+    now = time.time()
+    if not force and now - _last_reverse["at"] < 60:
+        return
+    _last_reverse["at"] = now
 
     adb = None
     for c in ADB_CANDIDATES:
@@ -79,11 +87,14 @@ def ensure_adb_reverse() -> None:
     try:
         dev = subprocess.run([adb, "devices"], capture_output=True, text=True, timeout=15)
         if "device" not in (dev.stdout or ""):
+            _last_reverse["ok"] = False
             return
         for port in ("8770", "8771"):
             subprocess.run([adb, "reverse", f"tcp:{port}", f"tcp:{port}"],
                            capture_output=True, timeout=15)
-        log("adb reverse 已设置（8770 / 8771）")
+        if not _last_reverse["ok"]:
+            log("adb reverse 已设置（8770 / 8771）")
+            _last_reverse["ok"] = True
     except Exception as exc:  # noqa: BLE001
         log(f"adb reverse 失败：{exc}")
 
