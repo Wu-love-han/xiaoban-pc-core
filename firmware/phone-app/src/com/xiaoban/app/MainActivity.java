@@ -127,6 +127,20 @@ public class MainActivity extends Activity {
         s.setUseWideViewPort(true);
         s.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
         s.setCacheMode(WebSettings.LOAD_NO_CACHE);
+        // 页面里的 fetch 失败时，让 JS 通知原生层重新探测地址
+        web.addJavascriptInterface(new Object() {
+            @android.webkit.JavascriptInterface
+            public void onFetchFail() {
+                ui.post(new Runnable() {
+                    @Override
+                    public void run() {
+                        setConnBadge(false);
+                        startProbe();
+                    }
+                });
+            }
+        }, "XiaobanNative");
+
         web.setWebChromeClient(new WebChromeClient());
         web.setWebViewClient(new WebViewClient() {
             @Override
@@ -173,6 +187,8 @@ public class MainActivity extends Activity {
     protected void onResume() {
         super.onResume();
         refreshBadge();
+        // 回到前台时重探一次（USB 拔插 / WiFi 切换后地址可能变了）
+        startProbe();
     }
 
     /** 顶部状态：无障碍开没开、本地服务跑没跑 */

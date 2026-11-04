@@ -188,7 +188,15 @@
       opt.headers['Content-Type'] = 'application/json';
       opt.body = JSON.stringify(body);
     }
-    return fetch(path, opt).then(function (r) {
+    return fetch(path, opt).catch(function (err) {
+      // 连不上：通知原生层重新探测地址（USB 拔插 / 切网络后地址会变）
+      try {
+        if (window.XiaobanNative && window.XiaobanNative.onFetchFail) {
+          window.XiaobanNative.onFetchFail();
+        }
+      } catch (e) { /* 忽略 */ }
+      throw err;
+    }).then(function (r) {
       return r.text().then(function (txt) {
         var data = null;
         try { data = txt ? JSON.parse(txt) : null; } catch (e) { data = null; }
