@@ -268,6 +268,8 @@ async def run_turn(
     tool_count = 0
     usage = {"in": 0, "out": 0}
     all_tool_calls: list[dict] = []
+    progress: list[dict] = []          # 每步做了什么（中断时用来汇报）
+    fail_streak = 0                     # 连续失败次数（防死循环）
     content_parts: list[str] = []
     thinking_parts: list[str] = []
 
@@ -475,6 +477,16 @@ async def run_turn(
                 else:
                     res = await registry.aexecute(c.name, args, ctx)
 
+            # 记进度（中断时用来汇报做到哪了）
+            _ok = bool(res.get("ok"))
+            progress.append({
+                "name": c.name,
+                "title": (spec.title if spec else c.name),
+                "ok": _ok,
+                "brief": str(res.get("output") or "")[:80].replace("\n", " "),
+            })
+            fail_streak = 0 if _ok else (fail_streak + 1)
+
             db.add_tool_run(
                 session_id,
                 c.call_id,
@@ -504,6 +516,10 @@ async def run_turn(
                 },
             )
 
+            if fail_streak >= 3:
+                # 连续三次失败，别再试了，收手并汇报
+                break
+
             messages.append(
                 {
                     "role": "tool",
@@ -521,13 +537,36 @@ async def run_turn(
     final_text = "".join(content_parts).strip()
     final_thinking = "".join(thinking_parts).strip()
 
+    def _progress_report(reason: str) -> str:
+        """中断时把「做到哪了」说清楚，别让用户一脸懵。"""
+        if not progress:
+            return reason
+        done = [p for p in progress if p["ok"]]
+        failed = [p for p in progress if not p["ok"]]
+        lines = [reason, ""]
+        lines.append(f"我做了 {len(progress)} 步（成功 {len(done)}，失败 {len(failed)}）：")
+        for i, p in enumerate(progress[-8:], 1):
+            mark = "✓" if p["ok"] else "✗"
+            lines.append(f"  {mark} {p['title']}：{p['brief'][:50] or '(无输出)'}")
+        if failed:
+            lines.append("")
+            lines.append(f"卡在「{failed[-1]['title']}」这一步。")
+            lines.append("要么换个说法，要么告诉我这一步该怎么做。")
+        else:
+            lines.append("")
+            lines.append("下一步你说「继续」，我接着往下做。")
+        return "\n".join(lines)
+
     if abort.is_set():
         if not final_text:
-            final_text = "行，我停下了。"
+            final_text = _progress_report("我停下了。") if progress else "行，我停下了。"
             yield ("content", {"text": final_text})
     elif not finished and tool_count > 0 and round_no >= max_rounds:
         if not final_text:
-            final_text = FALLBACK_MAX_ROUNDS
+            final_text = _progress_report("轮数用满了，先停一下。")
+    elif not finished and fail_streak >= 3:
+        if not final_text:
+            final_text = _progress_report("连续几步都没成，先停一下。")
     if not final_text:
         # 模型什么都没说（极少数情况）——不能让前端空白，补一句并推给前端
         final_text = FALLBACK_EMPTY
