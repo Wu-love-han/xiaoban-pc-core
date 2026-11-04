@@ -33,6 +33,10 @@ _MARK_STATE_START = "<!-- STATE:START -->"
 _MARK_STATE_END = "<!-- STATE:END -->"
 _MARK_RECENT_START = "<!-- RECENT:START -->"
 _MARK_RECENT_END = "<!-- RECENT:END -->"
+# 每日分志索引区：一天一行关键词，正文在 docs/daily/YYYY-MM-DD.md
+_MARK_DAILY_START = "<!-- DAILY:START -->"
+_MARK_DAILY_END = "<!-- DAILY:END -->"
+DAILY_DIR = DOCS / "daily"
 
 # 清洗：模型偶尔会把工具调用写成 XML 文本，一旦落进总志，
 # 下一轮注入 system prompt 后模型会照着学，形成恶性循环（实测踩过）。
@@ -165,6 +169,70 @@ def daily_compact() -> str:
         return "（复盘失败）"
 
 
+def daily_index_snippet(limit: int = 7) -> str:
+    """给 system prompt 的分志索引（最近 N 天，每天一行关键词）。"""
+    try:
+        text = read()
+        m = re.search(
+            re.escape(_MARK_DAILY_START) + r"(.*?)" + re.escape(_MARK_DAILY_END),
+            text,
+            re.S,
+        )
+        if not (m and m.group(1).strip()):
+            return ""
+        lines = [ln for ln in m.group(1).strip().splitlines() if ln.strip()][-limit:]
+        return "【总志·每日分志索引】\n" + "\n".join(lines)
+    except Exception:  # noqa: BLE001
+        return ""
+
+
+def daily_file_path(day: str | None = None) -> Path:
+    """某天的分志路径（day 形如 2026-11-04，省略=今天）。"""
+    d = day or datetime.now().strftime("%Y-%m-%d")
+    return DAILY_DIR / f"{d}.md"
+
+
+def write_daily(day: str, keywords: str, statement: str) -> str:
+    """写/覆盖某天的分志，并在总志的 DAILY 区更新那一行索引。
+
+    返回一句人话结果。绝不抛异常（记忆功能坏了不能拖垮对话）。
+    """
+    try:
+        d = (day or datetime.now().strftime("%Y-%m-%d")).strip()
+        kws = sanitize(keywords) or "（无关键词）"
+        body = sanitize(statement) or "（无陈述）"
+        DAILY_DIR.mkdir(parents=True, exist_ok=True)
+        fp = DAILY_DIR / f"{d}.md"
+        fp.write_text(
+            f"# {d} · 小伴分志\n\n**关键词**：{kws}\n\n## 闭环陈述\n\n{body}\n",
+            encoding="utf-8",
+        )
+        # 更新总志索引：同一天的旧行先删掉，再追加新行
+        text = read()
+        line = f"- `{d}` {kws} → 分志：docs/daily/{d}.md"
+        m = re.search(
+            re.escape(_MARK_DAILY_START) + r"(.*?)" + re.escape(_MARK_DAILY_END),
+            text,
+            re.S,
+        )
+        if m:
+            kept = [
+                ln
+                for ln in m.group(1).strip().splitlines()
+                if ln.strip() and f"`{d}`" not in ln
+            ]
+            kept.append(line)
+            new_body = "\n".join(kept)
+        else:
+            new_body = line
+        text = _replace_region(text, _MARK_DAILY_START, _MARK_DAILY_END, new_body)
+        GRAND_LOG_FILE.write_text(text, encoding="utf-8")
+        return f"{d} 的分志写好了：{fp}"
+    except Exception:  # noqa: BLE001
+        logger.warning("写每日分志失败", exc_info=True)
+        return "分志没写成，回头再试"
+
+
 def state_snippet() -> str:
     """给 system prompt 的精简版（只取当前状态 + 最近 5 条流水，省 token）。"""
     try:
@@ -179,6 +247,9 @@ def state_snippet() -> str:
             lines = [sanitize(ln) for ln in lines]
             lines = [ln for ln in lines if ln]
             out.append("【总志·最近流水】\n" + "\n".join(lines))
+        idx = daily_index_snippet()
+        if idx:
+            out.append(idx)
         return "\n\n".join(out)
     except Exception:  # noqa: BLE001
         return ""

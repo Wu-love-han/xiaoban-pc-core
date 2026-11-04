@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 import logging
 import secrets
+from typing import Any
 import sys
 import time
 from pathlib import Path
@@ -516,6 +517,196 @@ async def docs_download(name: str, pc_console: str | None = Cookie(default=None)
 
 class DecideIn(BaseModel):
     id: str
+
+
+# ---------------------------------------------------------------- 设置（配置编辑）
+
+CFG_FILE = ROOT / "config" / "config.json"
+
+# 能改的键（白名单）。token / pin / api_key 一律不给改——那些是安全边界。
+EDITABLE = {
+    "brain.provider", "brain.model", "brain.reasoning", "brain.temperature",
+    "brain.top_p", "brain.max_tokens", "brain.max_rounds", "brain.history_turns",
+    "brain.approval_timeout_s", "brain.fallback_provider", "brain.fallback_model",
+    "memory.enabled", "memory.max_inject",
+    "search.enabled", "search.max_results", "search.timeout_s",
+    "vision.provider", "vision.model",
+    "log.level",
+    "app.offline_model",
+    "device.simulate",
+}
+
+# 只读展示的（敏感）
+SECRET = {"server.auth_token", "server.admin_token", "server.console_pin",
+          "providers.gateway.api_key", "providers.deepseek.api_key",
+          "providers.phone.token", "device.token"}
+
+
+def _cfg_get(d: dict, path: str):
+    cur = d
+    for k in path.split("."):
+        if not isinstance(cur, dict) or k not in cur:
+            return None
+        cur = cur[k]
+    return cur
+
+
+def _cfg_set(d: dict, path: str, val) -> None:
+    parts = path.split(".")
+    cur = d
+    for k in parts[:-1]:
+        cur = cur.setdefault(k, {})
+    cur[parts[-1]] = val
+
+
+def _mask(v) -> str:
+    s = str(v)
+    return ("****" + s[-4:]) if len(s) > 4 else "****"
+
+
+@app.get("/api/config")
+async def config_read(pc_console: str | None = Cookie(default=None)):
+    _guard(pc_console)
+    import json as _json
+
+    try:
+        d = _json.loads(CFG_FILE.read_text(encoding="utf-8"))
+    except Exception as exc:  # noqa: BLE001
+        return {"ok": False, "error": str(exc)}
+
+    items = []
+    for path in sorted(EDITABLE):
+        items.append({"path": path, "value": _cfg_get(d, path), "editable": True})
+    for path in sorted(SECRET):
+        items.append({"path": path, "value": _mask(_cfg_get(d, path)), "editable": False})
+    return {"ok": True, "items": items}
+
+
+class ConfigSetIn(BaseModel):
+    path: str
+    value: Any = None
+
+
+@app.post("/api/config")
+async def config_write(body: ConfigSetIn, pc_console: str | None = Cookie(default=None)):
+    _guard(pc_console)
+    import json as _json
+
+    if body.path not in EDITABLE:
+        return {"ok": False, "error": f"「{body.path}」不能改（不在白名单里）"}
+    try:
+        d = _json.loads(CFG_FILE.read_text(encoding="utf-8"))
+    except Exception as exc:  # noqa: BLE001
+        return {"ok": False, "error": str(exc)}
+
+    # 类型跟原值对齐
+    old = _cfg_get(d, body.path)
+    val = body.value
+    try:
+        if isinstance(old, bool):
+            val = bool(val) if not isinstance(val, str) else val.lower() in ("1", "true", "yes", "on")
+        elif isinstance(old, int) and not isinstance(old, bool):
+            val = int(val)
+        elif isinstance(old, float):
+            val = float(val)
+        elif isinstance(old, str):
+            val = str(val)
+    except (TypeError, ValueError):
+        return {"ok": False, "error": f"值类型不对，{body.path} 原来是 {type(old).__name__}"}
+
+    _cfg_set(d, body.path, val)
+    try:
+        bak = CFG_FILE.with_suffix(".json.bak")
+        bak.write_text(CFG_FILE.read_text(encoding="utf-8"), encoding="utf-8")
+        CFG_FILE.write_text(_json.dumps(d, ensure_ascii=False, indent=2), encoding="utf-8")
+    except Exception as exc:  # noqa: BLE001
+        return {"ok": False, "error": f"写配置失败：{exc}"}
+
+    return {"ok": True, "path": body.path, "value": val,
+            "note": "改好了，重启后端生效（有的键是每次读的，立刻生效）"}
+
+
+# ---------------------------------------------------------------- 系统操作（重启 / 日志 / 工具）
+
+@app.get("/api/system/info")
+async def system_info(pc_console: str | None = Cookie(default=None)):
+    _guard(pc_console)
+    import platform as _pf  # noqa: PLC0415
+    import shutil as _sh  # noqa: PLC0415
+
+    out = {
+        "ok": True,
+        "python": _pf.python_version(),
+        "platform": _pf.platform(),
+        "cwd": str(ROOT),
+    }
+    try:
+        du = _sh.disk_usage(str(ROOT))
+        out["disk"] = {"total_gb": round(du.total / 1e9, 1),
+                       "free_gb": round(du.free / 1e9, 1)}
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        from core.toolbase import registry  # noqa: PLC0415
+
+        out["tools"] = len(registry.schemas())
+    except Exception:  # noqa: BLE001
+        out["tools"] = 0
+    try:
+        from core import db  # noqa: PLC0415
+
+        out["sessions"] = len(db.list_sessions(limit=999))
+    except Exception:  # noqa: BLE001
+        out["sessions"] = 0
+    return out
+
+
+@app.get("/api/system/logs")
+async def system_logs(lines: int = 100, pc_console: str | None = Cookie(default=None)):
+    _guard(pc_console)
+    lines = max(10, min(500, lines))
+    logfile = ROOT / "logs" / "pccore.log"
+    if not logfile.exists():
+        return {"ok": True, "lines": [], "note": "还没有日志文件"}
+    try:
+        text = logfile.read_text(encoding="utf-8", errors="replace")
+        arr = text.splitlines()[-lines:]
+        return {"ok": True, "lines": arr, "file": str(logfile)}
+    except Exception as exc:  # noqa: BLE001
+        return {"ok": False, "error": str(exc), "lines": []}
+
+
+@app.get("/api/tools")
+async def tools_list(pc_console: str | None = Cookie(default=None)):
+    _guard(pc_console)
+    try:
+        from core.toolbase import registry  # noqa: PLC0415
+
+        items = []
+        for sch in registry.schemas():
+            fn = sch.get("function", {})
+            items.append({
+                "name": fn.get("name", ""),
+                "desc": (fn.get("description") or "")[:120],
+            })
+        return {"ok": True, "items": items, "count": len(items)}
+    except Exception as exc:  # noqa: BLE001
+        return {"ok": False, "error": str(exc), "items": []}
+
+
+@app.post("/api/system/restart")
+async def system_restart(pc_console: str | None = Cookie(default=None)):
+    """重启后端（守护进程会自己拉起来）。"""
+    _guard(pc_console)
+    import os as _os  # noqa: PLC0415
+    import threading as _th  # noqa: PLC0415
+
+    def _bye() -> None:
+        time.sleep(1)
+        _os._exit(0)   # 守护进程看到退出会重启
+
+    _th.Thread(target=_bye, daemon=True).start()
+    return {"ok": True, "note": "后端正在重启，10 秒后回来"}
 
 
 @app.post("/api/consent/approve")

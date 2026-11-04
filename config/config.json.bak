@@ -1,0 +1,155 @@
+{
+  "server": {
+    "host": "127.0.0.1",
+    "port": 8770,
+    "auth_token": "DVO5BZyPDRRLY_lJ-y-etSZn1UZSkF21guugqD-hz7U",
+    "admin_token": "gkpKpSARrqzIeWOKS940O4IWN49MCxPc",
+    "console_pin": "159270"
+  },
+  "brain": {
+    "provider": "gateway",
+    "model": "deepseek/deepseek-flash",
+    "fallback_provider": "ollama",
+    "fallback_model": "qwen2.5:7b",
+    "reasoning": "none",
+    "temperature": 0.8,
+    "top_p": 0.92,
+    "max_tokens": 1200,
+    "max_rounds": 25,
+    "history_turns": 8,
+    "approval_timeout_s": 300
+  },
+  "providers": {
+    "gateway": {
+      "base_url": "http://127.0.0.1:3425/v1",
+      "api_key": "",
+      "timeout_s": 180
+    },
+    "ollama": {
+      "base_url": "http://127.0.0.1:11434",
+      "timeout_s": 300,
+      "num_ctx": 8192
+    },
+    "phone": {
+      "cap_urls": [
+        "http://100.115.152.111:9123",
+        "http://172.30.188.163:9123"
+      ],
+      "token": "DVO5BZyPDRRLY_lJ-y-etSZn1UZSkF21guugqD-hz7U",
+      "timeout_s": 8
+    },
+    "deepseek": {
+      "base_url": "https://api.deepseek.com/v1",
+      "api_key": "sk-5c06ccab24c14e139d114784a9d6bf2f",
+      "timeout_s": 180
+    }
+  },
+  "tools": {
+    "enabled": [],
+    "shell_whitelist": [
+      "dir",
+      "ls",
+      "type",
+      "cat",
+      "more",
+      "head",
+      "tail",
+      "where",
+      "which",
+      "tree",
+      "find",
+      "grep",
+      "findstr",
+      "wc",
+      "sort",
+      "uniq",
+      "whoami",
+      "hostname",
+      "systeminfo",
+      "ver",
+      "date",
+      "time",
+      "set",
+      "ipconfig",
+      "ifconfig",
+      "ping",
+      "nslookup",
+      "netstat",
+      "route",
+      "arp",
+      "wmic",
+      "sc query",
+      "net use",
+      "net view",
+      "net share",
+      "tasklist",
+      "tasklist /",
+      "driverquery",
+      "getmac",
+      "vol",
+      "chkdsk",
+      "powercfg /getactivescheme",
+      "powercfg /list",
+      "w32tm /query",
+      "fsutil fsinfo",
+      "reg query",
+      "reg export",
+      "python --version",
+      "python -V",
+      "pip list",
+      "pip show",
+      "node -v",
+      "npm -v",
+      "git status",
+      "git log",
+      "git diff",
+      "git branch",
+      "git remote",
+      "git show",
+      "git rev-parse",
+      "git config --get",
+      "docker ps",
+      "docker images",
+      "docker version",
+      "ollama list",
+      "ollama ps",
+      "ollama show",
+      "nvidia-smi",
+      "nvcc --version",
+      "echo",
+      "cls",
+      "color",
+      "title",
+      "typeperf",
+      "systeminfo"
+    ]
+  },
+  "search": {
+    "enabled": true,
+    "max_results": 5,
+    "timeout_s": 10,
+    "region": "cn-zh"
+  },
+  "memory": {
+    "enabled": true,
+    "max_inject": 6
+  },
+  "device": {
+    "backend_url": "http://127.0.0.1:8000",
+    "token": "",
+    "simulate": true
+  },
+  "log": {
+    "level": "INFO",
+    "file": "logs/pccore.log",
+    "max_bytes": 5000000,
+    "backup_count": 3
+  },
+  "vision": {
+    "provider": "gateway",
+    "model": "auto/deepseek-v4.1-flash"
+  },
+  "app": {
+    "offline_model": "deepseek-chat"
+  }
+}

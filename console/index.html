@@ -72,6 +72,7 @@
       <div class="tab" data-t="inbox">消息</div>
       <div class="tab" data-t="chat">对话</div>
       <div class="tab" data-t="docs">文档</div>
+      <div class="tab" data-t="config">设置</div>
     </div>
 
     <div id="tab-overview"></div>
@@ -81,6 +82,7 @@
     <div id="tab-inbox" class="hidden"></div>
     <div id="tab-chat" class="hidden"></div>
     <div id="tab-docs" class="hidden"></div>
+    <div id="tab-config" class="hidden"></div>
   </div>
 
   <div class="foot hidden" id="chatFoot">
@@ -155,7 +157,7 @@ function switchTab(name) {
   document.querySelectorAll('.tab').forEach(function (t) {
     t.classList.toggle('on', t.getAttribute('data-t') === name);
   });
-  ['overview','tasks','memory','persona','inbox','chat','docs'].forEach(function (n) {
+  ['overview','tasks','memory','persona','inbox','chat','docs','config'].forEach(function (n) {
     $('tab-' + n).classList.toggle('hidden', n !== name);
   });
   $('chatFoot').classList.toggle('hidden', name !== 'chat' && name !== 'inbox');
@@ -168,6 +170,7 @@ function switchTab(name) {
   if (name === 'chat') loadChat();
   if (name === 'inbox') loadInbox();
   if (name === 'docs') loadDocs();
+  if (name === 'config') loadConfig();
 }
 
 // ---------------- 概览
@@ -452,6 +455,108 @@ $('chatInput').addEventListener('keydown', function (e) {
 
 // 启动：先试一下有没有登录态
 api('GET', '/api/state').then(function () { showApp(); }).catch(function () { showLogin(); });
+
+// ---------------------------------------------------------------- 设置
+async function loadConfig() {
+  const el = document.getElementById('tab-config');
+  el.innerHTML = '<div class="muted">读取中…</div>';
+  const r = await api('GET', '/api/config');
+  if (!r.ok) { el.innerHTML = '<div class="muted">读不到配置：' + (r.error || '') + '</div>'; return; }
+  const items = r.items || [];
+  const editable = items.filter(x => x.editable);
+  const secret = items.filter(x => !x.editable);
+
+  el.innerHTML =
+    '<div class="muted" style="margin-bottom:10px">改完点「保存」。标灰的是安全项，不给改。</div>' +
+    '<div style="display:grid;gap:8px">' +
+    editable.map(function (x) {
+      var v = x.value;
+      var isBool = typeof v === 'boolean';
+      var input = isBool
+        ? '<select data-path="' + x.path + '" style="width:100%;padding:8px;background:#0f1115;border:1px solid #232936;border-radius:6px;color:#e6e8ee">' +
+          '<option value="true"' + (v ? ' selected' : '') + '>开</option>' +
+          '<option value="false"' + (!v ? ' selected' : '') + '>关</option></select>'
+        : '<input data-path="' + x.path + '" value="' + String(v == null ? '' : v).replace(/"/g, '&quot;') + '" ' +
+          'style="width:100%;padding:8px;background:#0f1115;border:1px solid #232936;border-radius:6px;color:#e6e8ee;font-family:inherit">';
+      return '<div style="display:grid;grid-template-columns:220px 1fr 70px;gap:10px;align-items:center">' +
+        '<div style="font-size:12px;color:#8a93a5">' + x.path + '</div>' +
+        input +
+        '<button class="btn ghost" data-save="' + x.path + '" style="font-size:12px">保存</button>' +
+        '</div>';
+    }).join('') +
+    '</div>' +
+    '<div style="margin-top:18px;padding-top:14px;border-top:1px solid #232936">' +
+    '<div class="muted" style="margin-bottom:8px">安全项（只读）</div>' +
+    secret.map(function (x) {
+      return '<div style="display:grid;grid-template-columns:220px 1fr;gap:10px;font-size:12px;color:#6b7280;margin-bottom:6px">' +
+        '<div>' + x.path + '</div><div>' + String(x.value) + '</div></div>';
+    }).join('') +
+    '</div>';
+
+  // ---- 系统区块 ----
+  var sys = document.createElement('div');
+  sys.style.marginTop = '22px';
+  sys.innerHTML =
+    '<div style="padding-top:14px;border-top:1px solid #232936">' +
+    '<div style="font-size:13px;font-weight:600;margin-bottom:10px">系统</div>' +
+    '<div id="sys-info" class="muted" style="font-size:12px;margin-bottom:10px">读取中…</div>' +
+    '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">' +
+    '  <button class="btn ghost" id="btn-restart" style="font-size:12px">重启后端</button>' +
+    '  <button class="btn ghost" id="btn-logs" style="font-size:12px">看日志</button>' +
+    '  <button class="btn ghost" id="btn-tools" style="font-size:12px">看工具</button>' +
+    '</div>' +
+    '<div id="sys-out" style="font-size:11px;font-family:ui-monospace,monospace;background:#0f1115;border:1px solid #232936;border-radius:8px;padding:10px;max-height:340px;overflow:auto;white-space:pre-wrap;display:none"></div>' +
+    '</div>';
+  el.appendChild(sys);
+
+  api('GET', '/api/system/info').then(function (i) {
+    var t = document.getElementById('sys-info');
+    if (!t) return;
+    if (!i || !i.ok) { t.textContent = '读不到系统信息'; return; }
+    t.textContent = '工具 ' + i.tools + ' 个 · 会话 ' + i.sessions +
+      ' 个 · Python ' + i.python +
+      (i.disk ? ' · 磁盘剩余 ' + i.disk.free_gb + 'GB' : '');
+  });
+
+  var out = document.getElementById('sys-out');
+  function show(text) { out.style.display = 'block'; out.textContent = text; }
+
+  var br = document.getElementById('btn-restart');
+  if (br) br.onclick = async function () {
+    if (!confirm('确定重启后端？大约 10 秒恢复。')) return;
+    br.textContent = '重启中…';
+    await api('POST', '/api/system/restart', {});
+    show('后端正在重启，10 秒后刷新页面。');
+    setTimeout(function () { location.reload(); }, 12000);
+  };
+  var bl = document.getElementById('btn-logs');
+  if (bl) bl.onclick = async function () {
+    var r2 = await api('GET', '/api/system/logs?lines=120');
+    if (!r2.ok) { show('读日志失败：' + (r2.error || '')); return; }
+    show((r2.lines || []).join('\n') || '(空)');
+  };
+  var bt = document.getElementById('btn-tools');
+  if (bt) bt.onclick = async function () {
+    var r3 = await api('GET', '/api/tools');
+    if (!r3.ok) { show('读工具失败：' + (r3.error || '')); return; }
+    show('共 ' + r3.count + ' 个工具：\n\n' +
+      (r3.items || []).map(function (x) { return x.name + '  —  ' + x.desc; }).join('\n'));
+  };
+
+  el.querySelectorAll('[data-save]').forEach(function (btn) {
+    btn.addEventListener('click', async function () {
+      var path = btn.getAttribute('data-save');
+      var input = el.querySelector('[data-path="' + path + '"]');
+      var raw = input.value;
+      btn.textContent = '…';
+      var r2 = await api('POST', '/api/config', { path: path, value: raw });
+      btn.textContent = r2.ok ? '✓' : '✗';
+      if (!r2.ok) alert(r2.error || '保存失败');
+      setTimeout(function () { btn.textContent = '保存'; }, 1200);
+    });
+  });
+}
+
 </script>
 </body>
 </html>
