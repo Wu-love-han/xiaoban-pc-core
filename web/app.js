@@ -1471,14 +1471,48 @@
         try { localStorage.setItem(VOICE_KEY, voiceOut ? '1' : '0'); } catch (e) { /* 忽略 */ }
       });
     }
-    // 检查语音能力
+    // 检查语音能力 + 填充语音列表
+    var VOICE_NAME_KEY = 'pc_voice_name';
+    var voiceSel = $('cfg-voice-name');
     if ($('voice-status')) {
       api('GET', '/api/voice/config').then(function (res) {
         var d = (res && res.data) || {};
         $('voice-status').textContent = d.zh_ok
           ? '中文语音合成和识别都可用'
           : '缺中文语音或识别器';
+        var vs = (res && res.voices) || [];
+        if (voiceSel && vs.length) {
+          var opts = ['<option value="">自动（中文优先）</option>'];
+          vs.forEach(function (v) {
+            opts.push('<option value="' + escapeHtml(v.name) + '">' +
+                      escapeHtml(v.name) + (v.chinese ? '（中文）' : '') + '</option>');
+          });
+          voiceSel.innerHTML = opts.join('');
+          var saved = '';
+          try { saved = localStorage.getItem(VOICE_NAME_KEY) || ''; } catch (e) { /* 忽略 */ }
+          if (saved) voiceSel.value = saved;
+        }
       }).catch(function () { /* 忽略 */ });
+    }
+    if (voiceSel) {
+      voiceSel.addEventListener('change', function () {
+        try { localStorage.setItem(VOICE_NAME_KEY, voiceSel.value); } catch (e) { /* 忽略 */ }
+      });
+    }
+    if ($('btn-voice-test')) {
+      $('btn-voice-test').addEventListener('click', function () {
+        var v = voiceSel ? voiceSel.value : '';
+        api('POST', '/api/voice/speak', {
+          text: '阿伟你好，我是小伴，这是试听。',
+          rate: 0, volume: 100, voice: v
+        }).then(function () { showBanner('试听已发送，听得到吗？'); })
+          .catch(function (e) { showBanner('试听失败：' + e.message); });
+      });
+    }
+    if ($('btn-voice-stop')) {
+      $('btn-voice-stop').addEventListener('click', function () {
+        api('POST', '/api/voice/stop', {}).catch(function () { /* 忽略 */ });
+      });
     }
 
     // 麦克风：录一句放进输入框

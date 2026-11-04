@@ -180,6 +180,13 @@
           <input type="checkbox" id="cfg-voice-out">
           <span>回复时念出来（语音播报）</span>
         </label>
+        <select id="cfg-voice-name" style="width:100%;margin-top:6px">
+          <option value="">（读取中…）</option>
+        </select>
+        <div style="display:flex;gap:8px;margin-top:6px">
+          <button class="btn ghost" id="btn-voice-test" type="button" style="font-size:12px">试听</button>
+          <button class="btn ghost" id="btn-voice-stop" type="button" style="font-size:12px">停止</button>
+        </div>
         <div class="muted" id="voice-status" style="font-size:11px;margin-top:4px"></div>
       </div>
 

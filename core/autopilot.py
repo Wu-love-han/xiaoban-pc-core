@@ -531,6 +531,14 @@ def tick_once() -> dict:
     except Exception:  # noqa: BLE001
         logger.debug("资源检查失败", exc_info=True)
 
+    # PC 自己也发心跳（否则三端列表里 PC 一直显示离线）
+    try:
+        from . import sync_hub  # noqa: PLC0415
+
+        sync_hub.heartbeat("pc")
+    except Exception:  # noqa: BLE001
+        logger.debug("PC 心跳失败", exc_info=True)
+
     return {"checked_at": now_min, "checked": len(rows), "fired": fired}
 
 
