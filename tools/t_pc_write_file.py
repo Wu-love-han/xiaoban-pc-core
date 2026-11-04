@@ -32,6 +32,19 @@ def _read_old(p: Path) -> str | None:
 
 
 def run(args: dict, ctx: Any) -> dict:
+    from tools import _protect as P  # noqa: PLC0415
+
+    path_arg = str(args.get("path") or "").strip()
+    allow_sys = bool(args.get("allow_system"))
+    ok, why = P.guard_write(path_arg, allow_sys)
+    if not ok:
+        return C.fail(why, "SystemPathProtected")
+    # 系统目录的文件先备份
+    if P.is_system_path(path_arg) and Path(path_arg).exists():
+        bak = P.backup(path_arg)
+        if bak is None:
+            return C.fail("备份失败，不敢动这个系统文件。", "BackupFailed")
+
     try:
         # 相对路径落到 workspace，但必须给文件名——不然不知道该写进哪个文件
         p = C.resolve_path(args.get("path"), ctx)
