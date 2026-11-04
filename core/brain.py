@@ -403,6 +403,19 @@ async def run_turn(
                                str(args)[:120])
             except Exception:  # noqa: BLE001
                 pass
+
+            # 第一次要动屏幕时，先告诉用户一声（不然他玩手机/看视频会被打断）
+            try:
+                if activity.needs_screen_notice(c.name) and activity.mark_announced(session_id):
+                    from . import proactive as _pro  # noqa: PLC0415
+
+                    _what = (spec.title if spec else c.name)
+                    _pro.push(
+                        f"我要动一下屏幕了：{_what}。可能会看到画面跳，别担心。",
+                        kind="notice", source="activity", priority=1,
+                    )
+            except Exception:  # noqa: BLE001
+                pass
             yield (
                 "tool_call",
                 {
@@ -531,6 +544,12 @@ async def run_turn(
     }
     try:
         activity.say(final_text)
+        # 这轮动过屏幕的话，告诉用户一声做完了
+        if activity._announced.get("said"):
+            from . import proactive as _pro  # noqa: PLC0415
+
+            _pro.push("屏幕操作做完了。", kind="notice", source="activity", priority=1)
+        activity.reset_turn()
     except Exception:  # noqa: BLE001
         pass
     msg_id = db.add_message(

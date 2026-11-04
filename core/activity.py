@@ -92,3 +92,35 @@ def snapshot() -> dict:
         )
         s["recent"] = list(_recent[-12:])
     return s
+
+
+# ---------------------------------------------------------------- 屏幕占用通知
+
+# 这些工具会真的动屏幕/鼠标键盘，用户会看到画面跳
+SCREEN_TOOLS = {
+    "pc.click", "pc.click_text", "pc.type", "pc.hotkey",
+    "pc.focus_window", "pc.open_app", "pc.screen", "pc.look",
+    "phone.click_text", "phone.tap", "phone.swipe", "phone.input_text",
+    "phone.key", "phone.open_app", "phone.find_tap",
+}
+
+_announced: dict = {"turn": "", "said": False}
+
+
+def needs_screen_notice(tool: str) -> bool:
+    return tool in SCREEN_TOOLS
+
+
+def mark_announced(turn_key: str) -> bool:
+    """一轮里只通知一次。返回 True 表示这次要通知。"""
+    with _lock:
+        if _announced.get("turn") == turn_key and _announced.get("said"):
+            return False
+        _announced["turn"] = turn_key
+        _announced["said"] = True
+        return True
+
+
+def reset_turn() -> None:
+    with _lock:
+        _announced["said"] = False
