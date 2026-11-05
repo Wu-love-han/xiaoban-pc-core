@@ -23,7 +23,7 @@ echo "[3/6] 编译 Java"
 LIBS="libs/api.jar;libs/provider.jar"
 javac -nowarn -source 8 -target 8 -bootclasspath "$PLATFORM" -cp "$LIBS" -d build/obj \
   build/gen/com/xiaoban/app/R.java src/com/xiaoban/app/*.java \
-  aidl-gen/moe/shizuku/server/*.java 2>&1 | grep -vE "^ע|^����|warning" || true
+  aidl-gen/moe/shizuku/server/*.java aidl-gen/com/xiaoban/app/*.java 2>&1 | grep -vE "^ע|^����|warning" || true
 
 echo "[4/6] 转 dex"
 "$BT/d8.bat" --lib "$PLATFORM" --min-api 24 --output build/dex \

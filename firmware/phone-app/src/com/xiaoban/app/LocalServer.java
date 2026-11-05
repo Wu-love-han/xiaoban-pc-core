@@ -270,6 +270,35 @@ public class LocalServer {
                 return o.toString();
             }
 
+            if (path.equals("/screenshot")) {
+                // 用 Shizuku 的 shell 跑 screencap，再读回来转 base64（不依赖 USB）
+                if (!"shizuku".equals(ShellRunner.level())) {
+                    return "{\"ok\":false,\"error\":\"没有 shell 权限，截不了屏\"}";
+                }
+                String f = "/sdcard/.xb_shot.png";
+                String out = ShellRunner.exec("screencap -p " + f + " && echo SHOT_OK", 20000);
+                if (out.indexOf("SHOT_OK") < 0) {
+                    return "{\"ok\":false,\"error\":\"截图失败：" + out.replace("\"", "'").substring(0, Math.min(120, out.length())) + "\"}";
+                }
+                java.io.File file = new java.io.File(f);
+                if (!file.exists()) return "{\"ok\":false,\"error\":\"截图文件不存在\"}";
+                byte[] data = new byte[(int) file.length()];
+                java.io.FileInputStream fis = new java.io.FileInputStream(file);
+                int read = 0;
+                while (read < data.length) {
+                    int n = fis.read(data, read, data.length - read);
+                    if (n < 0) break;
+                    read += n;
+                }
+                fis.close();
+                file.delete();
+                JSONObject o = new JSONObject();
+                o.put("ok", true);
+                o.put("size", read);
+                o.put("base64", android.util.Base64.encodeToString(data, android.util.Base64.NO_WRAP));
+                return o.toString();
+            }
+
             if (path.equals("/open_app") && method.equals("POST")) {
                 JSONObject req = new JSONObject(body == null || body.length() == 0 ? "{}" : body);
                 String pkg = req.optString("package", "").trim();
@@ -303,6 +332,83 @@ public class LocalServer {
                 o.put("count", arr.length());
                 o.put("apps", arr);
                 return o.toString();
+            }
+
+            // ------------------------------------------------ 虚拟屏（后台操作）
+            if (path.startsWith("/vdisplay")) {
+                IXiaobanDisplay vd = DisplayClient.get();
+                if (vd == null) {
+                    return "{\"ok\":false,\"error\":\"虚拟屏服务没起来（要 Shizuku 授权）\"}";
+                }
+                JSONObject req = new JSONObject(body == null || body.length() == 0 ? "{}" : body);
+                try {
+                    if (path.equals("/vdisplay/info")) {
+                        JSONObject o = new JSONObject(vd.info());
+                        o.put("ok", true);
+                        return o.toString();
+                    }
+                    if (path.equals("/vdisplay/create")) {
+                        int w = req.optInt("width", 720);
+                        int h = req.optInt("height", 1600);
+                        int dpi = req.optInt("dpi", 320);
+                        int id = vd.createDisplay(w, h, dpi);
+                        JSONObject o = new JSONObject();
+                        o.put("ok", id >= 0);
+                        o.put("displayId", id);
+                        if (id < 0) o.put("error", "创建失败（这个 ROM 可能不支持）");
+                        return o.toString();
+                    }
+                    if (path.equals("/vdisplay/release")) {
+                        vd.releaseDisplay();
+                        JSONObject o = new JSONObject();
+                        o.put("ok", true);
+                        return o.toString();
+                    }
+                    if (path.equals("/vdisplay/launch")) {
+                        String pkg = req.optString("package", "");
+                        JSONObject o = new JSONObject();
+                        o.put("ok", vd.launchApp(pkg, -1));
+                        o.put("package", pkg);
+                        return o.toString();
+                    }
+                    if (path.equals("/vdisplay/tap")) {
+                        JSONObject o = new JSONObject();
+                        o.put("ok", vd.tap(-1, req.optInt("x"), req.optInt("y")));
+                        return o.toString();
+                    }
+                    if (path.equals("/vdisplay/swipe")) {
+                        JSONObject o = new JSONObject();
+                        o.put("ok", vd.swipe(-1, req.optInt("x1"), req.optInt("y1"),
+                                req.optInt("x2"), req.optInt("y2"), req.optInt("ms", 300)));
+                        return o.toString();
+                    }
+                    if (path.equals("/vdisplay/key")) {
+                        JSONObject o = new JSONObject();
+                        o.put("ok", vd.key(-1, req.optInt("keycode")));
+                        return o.toString();
+                    }
+                    if (path.equals("/vdisplay/type")) {
+                        JSONObject o = new JSONObject();
+                        o.put("ok", vd.text(-1, req.optString("text", "")));
+                        return o.toString();
+                    }
+                    if (path.equals("/vdisplay/screenshot")) {
+                        byte[] png = vd.screenshot(-1);
+                        JSONObject o = new JSONObject();
+                        if (png == null || png.length == 0) {
+                            o.put("ok", false);
+                            o.put("error", "截不到图（虚拟屏没内容）");
+                        } else {
+                            o.put("ok", true);
+                            o.put("size", png.length);
+                            o.put("base64", android.util.Base64.encodeToString(png, android.util.Base64.NO_WRAP));
+                        }
+                        return o.toString();
+                    }
+                    return "{\"ok\":false,\"error\":\"未知的 vdisplay 接口\"}";
+                } catch (Throwable e) {
+                    return "{\"ok\":false,\"error\":\"" + String.valueOf(e).replace("\"", "'") + "\"}";
+                }
             }
 
             if (path.equals("/shell/info")) {
@@ -366,6 +472,6 @@ public class LocalServer {
 
     /** 版本号常量（避免依赖 BuildConfig） */
     public static final class BuildConfigLike {
-        public static final String VERSION_NAME = "2.2.0";
+        public static final String VERSION_NAME = "2.5.0";
     }
 }
