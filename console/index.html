@@ -500,6 +500,14 @@ async function loadConfig() {
     '<div style="padding-top:14px;border-top:1px solid #232936">' +
     '<div style="font-size:13px;font-weight:600;margin-bottom:10px">系统</div>' +
     '<div id="sys-info" class="muted" style="font-size:12px;margin-bottom:10px">读取中…</div>' +
+    '<div style="font-size:13px;font-weight:600;margin:16px 0 8px">权限</div>' +
+    '<div id="grant-state" class="muted" style="font-size:12px;margin-bottom:8px">读取中…</div>' +
+    '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">' +
+    '  <button class="btn ghost" id="btn-grant1" style="font-size:12px">1小时·等级2免确认</button>' +
+    '  <button class="btn ghost" id="btn-grant3" style="font-size:12px">1小时·等级3免确认</button>' +
+    '  <button class="btn ghost" id="btn-revoke" style="font-size:12px">撤销授权</button>' +
+    '</div>' +
+    '<div style="font-size:13px;font-weight:600;margin:16px 0 8px">系统</div>' +
     '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">' +
     '  <button class="btn ghost" id="btn-restart" style="font-size:12px">重启后端</button>' +
     '  <button class="btn ghost" id="btn-logs" style="font-size:12px">看日志</button>' +
@@ -520,6 +528,40 @@ async function loadConfig() {
 
   var out = document.getElementById('sys-out');
   function show(text) { out.style.display = 'block'; out.textContent = text; }
+
+  // ---- 授权 ----
+  var gs = document.getElementById('grant-state');
+  function refreshGrant() {
+    api('GET', '/api/consent/grant').then(function (r) {
+      if (!gs) return;
+      var g = (r && r.grant) || {};
+      if (g.active) {
+        var left = Math.max(0, Math.round((g.until_ms - Date.now()) / 60000));
+        gs.textContent = '✅ 已授权：等级 ≤' + g.max_level + '，还剩 ' + left + ' 分钟';
+        gs.style.color = '#4ec9b0';
+      } else {
+        gs.textContent = '未授权（等级 2/3 的操作会先问你）';
+        gs.style.color = '#8a93a5';
+      }
+    }).catch(function () { /* 忽略 */ });
+  }
+  refreshGrant();
+  var g1 = document.getElementById('btn-grant1');
+  if (g1) g1.onclick = async function () {
+    var r = await api('POST', '/api/consent/grant', { max_level: 2, minutes: 60 });
+    if (r.ok) refreshGrant(); else alert(r.error || '失败');
+  };
+  var g3 = document.getElementById('btn-grant3');
+  if (g3) g3.onclick = async function () {
+    if (!confirm('等级 3 包括系统目录、注册表、服务操作。确定放开？')) return;
+    var r = await api('POST', '/api/consent/grant', { max_level: 3, minutes: 60 });
+    if (r.ok) refreshGrant(); else alert(r.error || '失败');
+  };
+  var rv = document.getElementById('btn-revoke');
+  if (rv) rv.onclick = async function () {
+    var r = await api('POST', '/api/consent/revoke', {});
+    if (r.ok) refreshGrant(); else alert(r.error || '失败');
+  };
 
   var br = document.getElementById('btn-restart');
   if (br) br.onclick = async function () {

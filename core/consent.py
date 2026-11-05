@@ -178,4 +178,70 @@ def state() -> dict:
     with _lock, _conn() as c:
         total = c.execute("SELECT COUNT(*) AS n FROM requests").fetchone()["n"]
         pend = c.execute("SELECT COUNT(*) AS n FROM requests WHERE status='pending'").fetchone()["n"]
-    return {"total": int(total), "pending": int(pend)}
+    return {"total": int(total), "pending": int(pend), "grant": get_grant()}
+
+# ---------------------------------------------------------------- 临时授权
+# 用户可以说「接下来 1 小时，等级 2 的操作别问我」，存这里。
+
+_GRANT_FILE = None
+
+
+def _grant_path():
+    global _GRANT_FILE
+    if _GRANT_FILE is None:
+        from .paths import DATA_DIR  # noqa: PLC0415
+
+        _GRANT_FILE = DATA_DIR / "consent_grant.json"
+    return _GRANT_FILE
+
+
+def grant(max_level: int = 2, minutes: int = 60, by: str = "user") -> dict:
+    """给临时免确认授权。max_level: 0-3。"""
+    import json as _json  # noqa: PLC0415
+    import time as _t  # noqa: PLC0415
+
+    max_level = max(0, min(3, int(max_level)))
+    minutes = max(1, min(24 * 60, int(minutes)))
+    until = int(_t.time() * 1000) + minutes * 60 * 1000
+    data = {"active": True, "max_level": max_level, "until_ms": until, "by": by}
+    try:
+        p = _grant_path()
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(_json.dumps(data, ensure_ascii=False), encoding="utf-8")
+    except Exception:  # noqa: BLE001
+        logger.exception("写授权失败")
+    logger.info("临时授权：等级≤%s，%s 分钟", max_level, minutes)
+    return data
+
+
+def revoke() -> dict:
+    """撤销临时授权。"""
+    import json as _json  # noqa: PLC0415
+
+    data = {"active": False, "max_level": 0, "until_ms": 0, "by": "user"}
+    try:
+        p = _grant_path()
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(_json.dumps(data, ensure_ascii=False), encoding="utf-8")
+    except Exception:  # noqa: BLE001
+        pass
+    logger.info("临时授权已撤销")
+    return data
+
+
+def get_grant() -> dict:
+    """读当前授权（自动处理过期）。"""
+    import json as _json  # noqa: PLC0415
+    import time as _t  # noqa: PLC0415
+
+    try:
+        p = _grant_path()
+        if not p.exists():
+            return {"active": False, "max_level": 0, "until_ms": 0}
+        d = _json.loads(p.read_text(encoding="utf-8"))
+        if int(d.get("until_ms") or 0) <= int(_t.time() * 1000):
+            return {"active": False, "max_level": 0, "until_ms": 0, "expired": True}
+        return d
+    except Exception:  # noqa: BLE001
+        return {"active": False, "max_level": 0, "until_ms": 0}
+

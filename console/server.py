@@ -709,6 +709,47 @@ async def system_restart(pc_console: str | None = Cookie(default=None)):
     return {"ok": True, "note": "后端正在重启，10 秒后回来"}
 
 
+# ---------------------------------------------------------------- 临时授权
+
+class GrantIn(BaseModel):
+    max_level: int = 2
+    minutes: int = 60
+
+
+@app.post("/api/consent/grant")
+async def consent_grant(body: GrantIn, pc_console: str | None = Cookie(default=None)):
+    _guard(pc_console)
+    try:
+        from core import consent  # noqa: PLC0415
+
+        d = consent.grant(max_level=body.max_level, minutes=body.minutes)
+        return {"ok": True, "grant": d}
+    except Exception as exc:  # noqa: BLE001
+        return {"ok": False, "error": str(exc)}
+
+
+@app.post("/api/consent/revoke")
+async def consent_revoke(pc_console: str | None = Cookie(default=None)):
+    _guard(pc_console)
+    try:
+        from core import consent  # noqa: PLC0415
+
+        return {"ok": True, "grant": consent.revoke()}
+    except Exception as exc:  # noqa: BLE001
+        return {"ok": False, "error": str(exc)}
+
+
+@app.get("/api/consent/grant")
+async def consent_grant_state(pc_console: str | None = Cookie(default=None)):
+    _guard(pc_console)
+    try:
+        from core import consent  # noqa: PLC0415
+
+        return {"ok": True, "grant": consent.get_grant()}
+    except Exception as exc:  # noqa: BLE001
+        return {"ok": False, "error": str(exc)}
+
+
 @app.post("/api/consent/approve")
 async def consent_approve(body: DecideIn, pc_console: str | None = Cookie(default=None)):
     _guard(pc_console)
