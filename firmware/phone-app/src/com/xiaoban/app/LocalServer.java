@@ -472,6 +472,6 @@ public class LocalServer {
 
     /** 版本号常量（避免依赖 BuildConfig） */
     public static final class BuildConfigLike {
-        public static final String VERSION_NAME = "2.5.0";
+        public static final String VERSION_NAME = "2.6.0";
     }
 }

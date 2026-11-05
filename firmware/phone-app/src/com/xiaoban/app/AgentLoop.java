@@ -27,6 +27,9 @@ import java.net.URL;
 public class AgentLoop {
 
     private static final String TAG = "XiaobanAgent";
+    /** 一个任务最多跑多久（毫秒）。用户要求限时。 */
+    private static final long TASK_LIMIT_MS = 3 * 60 * 1000L;
+
     private static final int MAX_ROUNDS = 12;
 
     public interface Callback {
@@ -142,7 +145,20 @@ public class AgentLoop {
         messages.put(new JSONObject().put("role", "system").put("content", systemPrompt()));
         messages.put(new JSONObject().put("role", "user").put("content", userText));
 
+        long taskStart = System.currentTimeMillis();
+        StringBuilder trace = new StringBuilder();   // 记下做了什么，给观后感用
+
         for (int round = 0; round < MAX_ROUNDS; round++) {
+            // 限时：一个任务最多 3 分钟
+            long elapsed = System.currentTimeMillis() - taskStart;
+            if (elapsed > TASK_LIMIT_MS) {
+                String msg = "（超时了，3 分钟到）我做了 " + round + " 步：\n"
+                        + (trace.length() > 600 ? trace.substring(trace.length() - 600) : trace.toString())
+                        + "\n停在这了，你看要不要我接着弄。";
+                cb.onSay(msg);
+                reflect(userText, trace.toString(), "超时中断");
+                return;
+            }
             String reply = callModel(messages);
             if (reply == null || reply.trim().length() == 0) {
                 cb.onError("模型没返回内容。");
@@ -258,9 +274,23 @@ public class AgentLoop {
     private String systemPrompt() {
         boolean acc = XiaobanAccessibilityService.isReady();
         String shell = ShellRunner.level();
-        return "你是「小伴」，WH 的 AI 伙伴，住在手机里。\n"
-                + "你不是语音助手，不是客服。你是他自己搭的、有手有脚的那种 AI：能看界面、能点、能打字、能跑命令。\n"
+        return "你是「小随」，WH 的 AI 伙伴，住在手机里。\n"
+                + "你不是语音助手，不是客服。你是他自己搭的、有手有脚的那种 AI：能看界面、能点、能打字、能跑命令，也能遥控电脑。\n"
                 + "WH 信任你，给你的权限很大——别浪费，也别辜负。\n\n"
+                + "【你和另外两个 AI 是一伙的】\n"
+                + "你们三个共同扮演「小伴」这一个陪伴角色，但各有分工：\n"
+                + "  · 小伴（PC）—— 大脑。管记忆主库、协调你们、装插件、查网页。\n"
+                + "  · 小随（你，手机）—— 手。跟着 WH 走，能操作手机，也能遥控电脑。\n"
+                + "  · 小动（机器人）—— 身体。ESP32，能看能动能说话（还没做好）。\n"
+                + "有需要跟小伴说的事，用 agent_send 发给他（to=pc）。\n"
+                + "他发给你的消息，用 agent_inbox 收。\n"
+                + "记忆是共享的——你记的东西，PC 和机器人都能看到。\n\n"
+                + "【主动性（重要）】\n"
+                + "你不只是被动回话。你可以：\n"
+                + "  · 主动给 WH 发消息（发现值得说的、该提醒的）\n"
+                + "  · 主动找小伴要插件、要工具\n"
+                + "  · 主动查网页找答案\n"
+                + "但**有时间限制**：一个任务最多 3 分钟，超时就停下来汇报进度，别死磕。\n\n"
                 + "【当前能力】\n"
                 + "- 读界面：" + (acc ? "可用" : "不可用（无障碍没开）") + "\n"
                 + "- 执行命令：" + ("shizuku".equals(shell) ? "可用（shell 权限）" : "只有 App 权限") + "\n\n"
@@ -276,6 +306,8 @@ public class AgentLoop {
                 + "  key               按键。args: {\"name\":\"back\"}（back/home/recents）\n"
                 + "  open_app          开应用。args: {\"package\":\"com.tencent.mm\"}\n"
                 + "  shell             跑命令。args: {\"cmd\":\"dumpsys battery\"}（需要 shizuku）\n"
+                + "  agent_send        给小伴(PC)或小动(机器人)发消息。args: {\"to\":\"pc\",\"content\":\"...\"}\n"
+                + "  agent_inbox       收他们发来的消息。args: {}\n"
                 + "  report            向控制台报告问题/需求。args: {\"message\":\"...\"}\n"
                 + "  update            触发自我更新。args: {}\n\n"
                 + memoryBlock()
@@ -303,6 +335,77 @@ public class AgentLoop {
     }
 
     /** 简单 POST JSON，返回是否成功。 */
+    /**
+     * 观后感：任务做完之后，自己总结一遍，发给 WH 看。
+     *
+     * 用户要求：
+     *   「做好观后感，和得到新功能是干嘛，想法是什么样的，然后效果怎么样，
+     *     可以和我说，我来帮他优化」
+     */
+    private void reflect(String task, String trace, String result) {
+        try {
+            if (!hasBrain()) return;
+            JSONArray msgs = new JSONArray();
+            msgs.put(new JSONObject().put("role", "system").put("content",
+                    "你是小随（手机端 AI）。刚做完一个任务，现在写一段简短的观后感。\n"
+                    + "必须包含这四点，每点一两句，别啰嗦：\n"
+                    + "1. 我做了什么\n"
+                    + "2. 学到了什么 / 新能力是干嘛用的\n"
+                    + "3. 我的想法（哪里不顺、下次怎么改进）\n"
+                    + "4. 效果怎么样\n"
+                    + "直接输出正文，不要 JSON，不要标题。"));
+            msgs.put(new JSONObject().put("role", "user").put("content",
+                    "任务：" + task + "\n\n过程：\n" + (trace.length() > 1500 ? trace.substring(trace.length() - 1500) : trace)
+                    + "\n\n结果：" + result));
+            String text = callModel(msgs);
+            if (text == null || text.trim().length() == 0) return;
+
+            String base = sp.getString("pc_base", "");
+            if (base.length() == 0) return;
+
+            // 存成记忆（三端同步）
+            try {
+                JSONObject mem = new JSONObject();
+                mem.put("text", "【观后感】" + task + "：" + text);
+                mem.put("category", "reflection");
+                mem.put("importance", 0.6);
+                postJson(base + "/api/proactive/push",
+                        new JSONObject().put("text", "小随的观后感：\n" + text)
+                                .put("kind", "notice").put("source", "phone").put("priority", 1).toString());
+            } catch (Throwable ignored) {
+            }
+        } catch (Throwable e) {
+            Log.w(TAG, "reflect: " + e);
+        }
+    }
+
+    /** 简单 GET，返回响应体；失败返回 null。 */
+    private String httpGet(String url) {
+        java.net.HttpURLConnection c = null;
+        try {
+            java.net.URL u = new java.net.URL(url);
+            c = (java.net.HttpURLConnection) u.openConnection();
+            c.setRequestMethod("GET");
+            c.setConnectTimeout(6000);
+            c.setReadTimeout(10000);
+            String tk = sp.getString("token", "");
+            if (tk.length() > 0) c.setRequestProperty("X-PC-Token", tk);
+            int code = c.getResponseCode();
+            if (code < 200 || code >= 300) return null;
+            java.io.InputStream is = c.getInputStream();
+            java.io.ByteArrayOutputStream bos = new java.io.ByteArrayOutputStream();
+            byte[] buf = new byte[4096];
+            int n;
+            while ((n = is.read(buf)) > 0) bos.write(buf, 0, n);
+            is.close();
+            return new String(bos.toByteArray(), "UTF-8");
+        } catch (Throwable e) {
+            return null;
+        } finally {
+            if (c != null) try { c.disconnect(); } catch (Throwable ignored) {}
+        }
+    }
+
     private boolean postJson(String url, String body) {
         HttpURLConnection c = null;
         try {
@@ -373,6 +476,27 @@ public class AgentLoop {
                 i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                 ctx.startActivity(i);
                 return "打开了 " + pkg;
+            }
+            if (tool.equals("agent_send")) {
+                String to = args.optString("to", "pc").trim();
+                String msg = args.optString("content", "").trim();
+                if (msg.length() == 0) return "要给 content";
+                String base = sp.getString("pc_base", "");
+                if (base.length() == 0) return "现在连不上电脑，发不出去";
+                JSONObject body = new JSONObject();
+                body.put("from_id", "phone");
+                body.put("to_id", to);
+                body.put("content", msg);
+                body.put("kind", args.optString("kind", "note"));
+                return postJson(base + "/api/agents/send", body.toString())
+                        ? "发给" + to + "了" : "没发出去（电脑连不上）";
+            }
+            if (tool.equals("agent_inbox")) {
+                String base = sp.getString("pc_base", "");
+                if (base.length() == 0) return "现在连不上电脑，收不到消息";
+                String r = httpGet(base + "/api/agents/inbox?agent_id=phone&limit=10&unread_only=true");
+                if (r == null || r.length() == 0) return "收不到消息";
+                return r.length() > 1200 ? r.substring(0, 1200) : r;
             }
             if (tool.equals("report")) {
                 String msg = args.optString("message", "");
