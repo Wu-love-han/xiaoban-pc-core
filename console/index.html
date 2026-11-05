@@ -72,6 +72,7 @@
       <div class="tab" data-t="inbox">消息</div>
       <div class="tab" data-t="chat">对话</div>
       <div class="tab" data-t="docs">文档</div>
+      <div class="tab" data-t="agents">协作</div>
       <div class="tab" data-t="config">设置</div>
     </div>
 
@@ -82,6 +83,7 @@
     <div id="tab-inbox" class="hidden"></div>
     <div id="tab-chat" class="hidden"></div>
     <div id="tab-docs" class="hidden"></div>
+    <div id="tab-agents" class="hidden"></div>
     <div id="tab-config" class="hidden"></div>
   </div>
 
@@ -157,7 +159,7 @@ function switchTab(name) {
   document.querySelectorAll('.tab').forEach(function (t) {
     t.classList.toggle('on', t.getAttribute('data-t') === name);
   });
-  ['overview','tasks','memory','persona','inbox','chat','docs','config'].forEach(function (n) {
+  ['overview','tasks','memory','persona','inbox','chat','docs','agents','config'].forEach(function (n) {
     $('tab-' + n).classList.toggle('hidden', n !== name);
   });
   $('chatFoot').classList.toggle('hidden', name !== 'chat' && name !== 'inbox');
@@ -170,6 +172,7 @@ function switchTab(name) {
   if (name === 'chat') loadChat();
   if (name === 'inbox') loadInbox();
   if (name === 'docs') loadDocs();
+  if (name === 'agents') loadAgents();
   if (name === 'config') loadConfig();
 }
 
@@ -597,6 +600,89 @@ async function loadConfig() {
       setTimeout(function () { btn.textContent = '保存'; }, 1200);
     });
   });
+}
+
+
+// ---------------------------------------------------------------- 协作（三个 AI）
+async function loadAgents() {
+  const el = document.getElementById('tab-agents');
+  el.innerHTML = '<div class="muted">读取中…</div>';
+  const st = await api('GET', '/api/agents/state');
+  const rc = await api('GET', '/api/agents/recent?limit=40');
+  if (!st || !st.ok) { el.innerHTML = '<div class="muted">读不到协作状态</div>'; return; }
+
+  const roster = st.roster || {};
+  const unread = st.unread || {};
+  const items = (rc && rc.items) || [];
+
+  function fmt(ms) {
+    if (!ms) return '';
+    const d = new Date(ms);
+    const now = Date.now();
+    const diff = Math.round((now - ms) / 60000);
+    if (diff < 1) return '刚刚';
+    if (diff < 60) return diff + ' 分钟前';
+    if (diff < 1440) return Math.round(diff / 60) + ' 小时前';
+    return (d.getMonth() + 1) + '/' + d.getDate() + ' ' +
+           String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+  }
+
+  let html = '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;margin-bottom:18px">';
+  Object.keys(roster).forEach(function (k) {
+    const v = roster[k];
+    const n = unread[k] || 0;
+    html += '<div style="background:#12161d;border:1px solid #232936;border-radius:10px;padding:12px">' +
+      '<div style="font-size:14px;font-weight:600;margin-bottom:4px">' + v.name +
+      ' <span style="font-size:11px;color:#6b7280">' + v.role + '</span>' +
+      (n ? ' <span style="background:#e05555;color:#fff;font-size:10px;padding:1px 6px;border-radius:8px">' + n + '</span>' : '') +
+      '</div>' +
+      '<div style="font-size:11px;color:#8a93a5;line-height:1.5">' + (v.desc || '') + '</div>' +
+      '<div style="font-size:10px;color:#4a5160;margin-top:6px">' + ((v.caps || []).join(' · ')) + '</div>' +
+      '</div>';
+  });
+  html += '</div>';
+
+  html += '<div style="font-size:13px;font-weight:600;margin-bottom:10px">协作记录</div>';
+  if (!items.length) {
+    html += '<div class="muted">还没有互相说过话。让它们协作一次就有了。</div>';
+  } else {
+    html += '<div style="display:flex;flex-direction:column;gap:8px">';
+    items.forEach(function (m) {
+      const mine = m.from_id === 'pc';
+      html += '<div style="background:#12161d;border:1px solid #232936;border-radius:10px;padding:10px 12px;' +
+        (mine ? 'border-left:3px solid #4ec9b0' : 'border-left:3px solid #4b67b4') + '">' +
+        '<div style="font-size:11px;color:#8a93a5;margin-bottom:4px">' +
+        '<b style="color:' + (mine ? '#4ec9b0' : '#6d8ee0') + '">' + (m.from_name || m.from_id) + '</b>' +
+        ' → <b>' + (m.to_name || m.to_id) + '</b>' +
+        (m.kind ? ' <span style="color:#4a5160">[' + m.kind + ']</span>' : '') +
+        '<span style="float:right">' + fmt(m.created_ms) + '</span></div>' +
+        '<div style="font-size:12px;color:#e6e8ee;white-space:pre-wrap;line-height:1.6">' +
+        String(m.content || '').replace(/</g, '&lt;') + '</div>' +
+        '</div>';
+    });
+    html += '</div>';
+  }
+
+  html += '<div style="margin-top:16px;padding-top:12px;border-top:1px solid #232936">' +
+    '<div class="muted" style="margin-bottom:8px;font-size:12px">给小随/小动发一句（测试用）</div>' +
+    '<div style="display:flex;gap:8px">' +
+    '<select id="ag-to" style="padding:8px;background:#0f1115;border:1px solid #232936;border-radius:6px;color:#e6e8ee">' +
+    '<option value="phone">小随（手机）</option><option value="robot">小动（机器人）</option></select>' +
+    '<input id="ag-text" placeholder="说点什么…" style="flex:1;padding:8px;background:#0f1115;border:1px solid #232936;border-radius:6px;color:#e6e8ee">' +
+    '<button class="btn ghost" id="ag-send" style="font-size:12px">发送</button>' +
+    '</div></div>';
+
+  el.innerHTML = html;
+
+  const btn = document.getElementById('ag-send');
+  if (btn) btn.onclick = async function () {
+    const to = document.getElementById('ag-to').value;
+    const text = document.getElementById('ag-text').value.trim();
+    if (!text) return;
+    const r = await api('POST', '/api/agents/send', { from_id: 'pc', to_id: to, content: text, kind: 'note' });
+    if (r.ok) { document.getElementById('ag-text').value = ''; loadAgents(); }
+    else alert(r.error || '发送失败');
+  };
 }
 
 </script>

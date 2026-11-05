@@ -165,6 +165,7 @@ public class MainActivity extends Activity {
         // 启动本地能力服务（让 PC 能调手机）
         String err = LocalServer.start(this, TOKEN);
         Keeper.start(this);
+        Proactive.start(this);
         DisplayClient.init(this);
         if (err != null) {
             Toast.makeText(this, err, Toast.LENGTH_LONG).show();
